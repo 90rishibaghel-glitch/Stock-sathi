@@ -6,8 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 import datetime
 
-# Page configuration for mobile devices
-st.set_page_config(page_title="Stock Saathi", page_icon="📈", layout="vertical")
+# Page configuration for mobile devices - Fixed layout error
+st.set_page_config(page_title="Stock Saathi", page_icon="📈", layout="centered")
 
 st.title("🎯 Stock Saathi")
 st.caption("भारतीय शेयर बाजार (Cash Segment) स्कैनर | केवल शैक्षिक उद्देश्य के लिए")
@@ -215,6 +215,7 @@ else:
 st.markdown("---")
 st.markdown("""
 ### 🔍 अत्यंत महत्वपूर्ण सूचना
-- **डेटा सीमा:** यह ऐप मुफ़्त ऐतिहासिक डेटा (Yahoo/Google) का मिलान करता है। यह लाइव एक्सचेंज फीड नहीं है।
+- **डेटा सीमा:** यह ऐप मुफ़्त ऐतिहासिक डेटा (Yahoo/Google) का मिलान करता. है। यह लाइव एक्सचेंज फीड नहीं है।
 - **सुरक्षा:** निवेश करने से पहले अपने वित्तीय सलाहकार से अवश्य संपर्क करें।
 """)
+            

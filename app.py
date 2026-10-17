@@ -9,51 +9,6 @@ import datetime
 # Page configuration for clean mobile preview
 st.set_page_config(page_title="Stock Saathi Premium", page_icon="🎯", layout="centered")
 
-# Custom UI CSS to strictly match the dark premium cards template provided by the user
-st.markdown("""
-    <style>
-    .reportview-container { background: #0d0f12; }
-    .stock-card {
-        background-color: #12161f;
-        border: 1px solid #1e2533;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 18px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    }
-    .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .stock-name { color: #ffffff; font-size: 22px; font-weight: bold; margin: 0; }
-    .stock-score { color: #ffffff; font-size: 24px; font-weight: bold; margin: 0; text-align: right;}
-    .score-label { color: #8a99ad; font-size: 11px; margin: 0; text-align: right;}
-    .position-label { color: #8a99ad; font-size: 13px; margin: 2px 0 15px 0; }
-    .metrics-grid {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 15px;
-    }
-    .metric-item { flex: 1; text-align: left; }
-    .metric-label { color: #8a99ad; font-size: 13px; display: block; margin-bottom: 5px; }
-    .metric-value { font-size: 18px; font-weight: bold; }
-    .val-entry { color: #ffffff; }
-    .val-target { color: #00c853; }
-    .val-stop { color: #ff3d00; }
-    .qty-box {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-top: 1px solid #1e2533;
-        padding-top: 12px;
-    }
-    .qty-label { color: #8a99ad; font-size: 15px; font-weight: 500; }
-    .qty-value { color: #ffffff; font-size: 18px; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("🎯 Stock Saathi")
 st.caption("AI-पॉवर्ड प्री-मार्केट डीप एनालिसिस स्कैनर | लाइव कैश सेगमेंट")
 
@@ -74,7 +29,6 @@ WATCHLIST = [
 def analyze_company_news(ticker_name):
     """
     Scrapes actual financial news updates from Google News RSS for the target stock.
-    Filters out noise and calculates sentiment impact score.
     """
     score_modifier = 0
     news_headlines = []
@@ -89,7 +43,6 @@ def analyze_company_news(ticker_name):
             title = item.title.text
             news_headlines.append(title)
             title_lower = title.lower()
-            # Headline validation parsing
             if any(x in title_lower for x in ["profit", "rise", "buy", "growth", "dividend", "beats"]):
                 score_modifier += 6
             if any(x in title_lower for x in ["fall", "loss", "slump", "drop", "sell", "miss"]):
@@ -154,7 +107,7 @@ if nifty_status:
         st.success("✅ व्यापक बाज़ार का रुझान सकारात्मक (Bullish Environment) है।")
 
 # --- MASTER SCANNER ENGINE ---
-@st.cache_data(ttl=1200) # Deeper cache for processing stability
+@st.cache_data(ttl=1200)
 def deep_market_analysis():
     candidates = []
     
@@ -167,12 +120,10 @@ def deep_market_analysis():
             last_close = float(df['Close'].iloc[-1])
             prev_close = float(df['Close'].iloc[-2])
             
-            # 1. Multi-source Integrity Check
             alt_price = get_alternative_price(ticker)
             if alt_price:
-                if (abs(last_close - alt_price) / last_close) * 100 > 2.0: continue # Data anomaly protection
+                if (abs(last_close - alt_price) / last_close) * 100 > 2.0: continue
             
-            # 2. Historical & Indicator Calculations
             df['MA20'] = df['Close'].rolling(window=20).mean()
             df['MA50'] = df['Close'].rolling(window=50).mean()
             df['ATR'] = df['High'].rolling(window=14).mean() - df['Low'].rolling(window=14).mean()
@@ -181,22 +132,18 @@ def deep_market_analysis():
             ma50 = float(df['MA50'].iloc[-1])
             atr = float(df['ATR'].iloc[-1]) if not pd.isna(df['ATR'].iloc[-1]) else (last_close * 0.02)
             
-            # Base Scoring Logic (Prioritization Math)
             base_score = 60
             if last_close > ma20: base_score += 10
             if last_close > ma50: base_score += 10
             if last_close > prev_close: base_score += 5
             
-            # 3. Incorporate Live News Scraping & Financial Sentiment
             news_mod, headlines = analyze_company_news(ticker.replace(".NS",""))
-            final_score = clip_score(base_score + news_mod)
+            final_score = max(10, min(base_score + news_mod, 99))
             
-            # 4. Strategy Entry/Exit Points Generation
             entry = round(last_close, 2)
             stop_loss = round(entry - (1.5 * atr), 2)
             target = round(entry + (2.5 * atr), 2)
             
-            # 5. Position Sizing Risk Engine
             risk_per_share = entry - stop_loss
             if risk_per_share > 0:
                 quantity = int(MAX_RISK_INR // risk_per_share)
@@ -216,13 +163,9 @@ def deep_market_analysis():
         except Exception:
             continue
             
-    # Sort strictly by priority (highest match score first)
     return sorted(candidates, key=lambda x: x['score'], reverse=True)[:3]
 
-def clip_score(val):
-    return max(10, min(val, 99))
-
-# --- RENDER PREMIUM INTERFACE ---
+# --- RENDER INTERFACE ---
 st.subheader("🎯 आज के शीर्ष 3 प्राथमिकता वाले सेटअप")
 
 with st.spinner("सभी कंपनियों की रिपोर्ट्स और न्यूज़ एनालिसिस की जा रही है..."):
@@ -230,21 +173,28 @@ with st.spinner("सभी कंपनियों की रिपोर्ट
 
 if top_3_setups:
     for idx, setup in enumerate(top_3_setups, 1):
-        # Premium Visual Card Render matching the requested layout
-        st.markdown(f"""
-        <div class="stock-card">
-            <div class="card-header">
-                <span class="stock-name">{setup['ticker']}</span>
-                <div>
-                    <div class="stock-score">{setup['score']}/100</div>
-                    <div class="score-label">Analysis Score</div>
-                </div>
-            </div>
-            <div class="position-label">पोजीशन 0{idx} (प्राथमिकता रैंक)</div>
+        # Using Streamlit Containers to perfectly mirror the requested preview logic safely
+        with st.container(border=True):
+            c1, c2 = st.columns([2, 1])
+            c1.subheader(f"🟢 {setup['ticker']}")
+            c1.caption(f"पोजीशन 0{idx} (प्राथमिकता रैंक)")
             
-            <div class="metrics-grid">
-                <div class="metric-item">
-                    <span class="metric-label">Entry</span>
-                    <span class="metric-value val-entry">₹{setup['entry']:.2f}</span>
-                </div>
-                
+            c2.metric(label="Analysis Score", value=f"{setup['score']}/100")
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Entry Price", f"₹{setup['entry']:.2f}")
+            m2.metric("Target", f"₹{setup['target']:.2f}")
+            m3.metric("Stop-Loss", f"₹{setup['stop_loss']:.2f}")
+            
+            st.info(f"👉 Quantity (₹50,000 पूँजी रिस्क): {setup['quantity']} शेयर")
+            
+            if setup['news']:
+                with st.expander("🔍 कंपनी समाचार विश्लेषण रिपोर्ट"):
+                    for h in setup['news']:
+                        st.write(f"▪️ {h}")
+else:
+    st.info("वर्तमान डेटा सुरक्षा मानदंडों के कारण कोई सेटअप उपलब्ध नहीं है।")
+
+# --- MANDATORY RISK SAFEGUARD ---
+st.markdown("---")
+st.caption("**शैक्षिक अस्वीकरण:** एनालिसिस स्कोर तकनीकी इंडिकेटर्स का मैच रेट दिखाता है, यह मुनाफ़े की निश्चित गारंटी नहीं है।")

@@ -47,7 +47,7 @@ MASTER_CORPORATE_REPORTS = {
 }
 
 # --- DASHBOARD RENDERING ---
-st.subheader("📊 ग्लोबल मैक्रो और接收मार्केट डैशबोर्ड")
+st.subheader("📊 ग्लोबल मैक्रो और मार्केट डैशबोर्ड")
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Nifty लाइव भाव", "₹23,146.15")
 m2.metric("FII नेट फ्लो", "-1857.44 Cr")
@@ -58,7 +58,7 @@ st.subheader("📰 लाइव एक्सचेंज फाइलिंग�
 for stock, text in MASTER_CORPORATE_REPORTS.items():
     st.markdown(f"🔹 **{stock}**: {text}")
 
-# --- MASTER SCANNER ENGINE (🚨 NO CACHE - HIGH TO LOW RANKING) ---
+# --- MASTER SCANNER ENGINE (🚨 HIGH TO LOW RANKING) ---
 st.subheader("🎯 आज के शीर्ष 3 प्राथमिकता वाले लाइव सेटअप")
 
 def deep_historical_and_live_scan():
@@ -85,7 +85,7 @@ def deep_historical_and_live_scan():
             
             atr_val = float(df['ATR'].iloc[-1]) if not pd.isna(df['ATR'].iloc[-1]) else (live_price * 0.025)
             
-            # 📊 डीप इंटेलिजेंस स्कोरिंग मॉडल (एक्यूरेसी और मैच रेट)
+            # डीप इंटेलिजेंस स्कोरिंग मॉडल (एक्यूरेसी और मैच रेट)
             base_score = 75
             
             # 1. कॉर्पोरेट रिजल्ट्स इम्पैक्ट बूस्टर
@@ -127,7 +127,7 @@ def deep_historical_and_live_scan():
         except Exception:
             continue
             
-    # 🚨 CRITICAL FIX: पूरे डेटाबेस को HIGH से LOW एक्यूरेसी स्कोर के क्रम में सॉर्ट करना
+    # पूरे डेटाबेस को HIGH से LOW एक्यूरेसी स्कोर के क्रम में सॉर्ट करना
     return sorted(setups, key=lambda x: x['score'], reverse=True)[:3]
 
 top_3 = deep_historical_and_live_scan()
@@ -148,7 +148,7 @@ if top_3:
             m_tg.metric("Target (🎯)", f"₹{setup['target']:.2f}")
             m_sl.metric("Stop-Loss (🛑)", f"₹{setup['stop_loss']:.2f}")
             
-            st.warning(f"👉 Quantity (₹50k कैपिटल रिस्क): {setup['quantity']} शेयर (मैक्सिमम लॉस लिमिट: ₹250)")
+            st.warning(f"👉 Quantity (₹50k资本 रिस्क): {setup['quantity']} शेयर (मैक्सिमम लॉस लिमिट: ₹250)")
             
             # live chart view link button
             chart_url = f"https://tradingview.com{setup['ticker']}/"

@@ -6,7 +6,7 @@ from google import genai
 # 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
 from nsepythonserver import nse_quote_ltp, nse_quote
 
-# 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
+# 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और派 वाइड लेआउट)
 st.set_page_config(page_title="AI Intraday Scalper v2", page_icon="⚡", layout="wide")
 
 st.title("⚡ AI Intraday Scalper & Sector Scanner (v2 - LIVE)")
@@ -100,31 +100,37 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             price_change_pct = float(((last_price - open_price) / open_price) * 100)
             
             signal = "NO SIGNAL"
+            entry_price = 0.0
             stop_loss = 0.0
             target = 0.0
             score = 0.0
             
+            # सुधार: टारगेट को 1.5% से बढ़ाकर 2.5% किया ताकि बड़ा मूवमेंट मिले
+            # सुधार: एंट्री प्राइस में 0.1% का बफर जोड़ा ताकि आपको ऑर्डर लगाने का समय मिले
             if last_price > open_price and price_change_pct > 0.4:
-                signal = "📈 BUY (Long)"
-                stop_loss = float(last_price - (last_price * 0.007)) 
-                target = float(last_price + (last_price * 0.015))    
+                signal = "📈 BUY ABOVE (Long)"
+                entry_price = float(last_price + (last_price * 0.001))   # एंट्री बफर प्राइस
+                stop_loss = float(entry_price - (entry_price * 0.010))     # 1% स्टॉप लॉस
+                target = float(entry_price + (entry_price * 0.025))        # 2.5% बड़ा टारगेट
                 score = float(price_change_pct * 1.5) 
             elif last_price < open_price and price_change_pct < -0.4:
-                signal = "📉 SELL (Short)"
-                stop_loss = float(last_price + (last_price * 0.007))
-                target = float(last_price - (last_price * 0.015))
+                signal = "📉 SELL BELOW (Short)"
+                entry_price = float(last_price - (last_price * 0.001))   # एंट्री बफर प्राइस
+                stop_loss = float(entry_price + (entry_price * 0.010))     # 1% स्टॉप लॉस
+                target = float(entry_price - (entry_price * 0.025))        # 2.5% बड़ा टारगेट
                 score = float(abs(price_change_pct) * 1.5)
 
             if signal != "NO SIGNAL":
-                per_share_risk = abs(last_price - stop_loss)
+                per_share_risk = abs(entry_price - stop_loss)
                 qty = int(risk_per_trade // per_share_risk) if per_share_risk > 0 else 0
-                max_qty_allowed = int((capital * 5) // last_price)
+                max_qty_allowed = int((capital * 5) // entry_price)
                 final_qty = min(qty, max_qty_allowed)
                 
                 all_intraday_trades.append({
                     "sector": sector, 
                     "name": name, 
-                    "price": round(last_price, 2),
+                    "price": round(entry_price, 2), # बफर प्राइस को मुख्य प्राइस माना
+                    "current_price": round(last_price, 2),
                     "change": round(price_change_pct, 2), 
                     "signal": signal,
                     "target": round(target, 2), 
@@ -150,6 +156,11 @@ if sorted_trades:
         price_val = 0.0
 
     try:
+        ltp_val = float(top_trade.get('current_price', 0.0))
+    except:
+        ltp_val = 0.0
+
+    try:
         change_val = float(top_trade.get('change', 0.0))
     except:
         change_val = 0.0
@@ -172,16 +183,16 @@ if sorted_trades:
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
-            st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{price_val}", delta=f"{change_val}%")
+            st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{ltp_val}", delta=f"{change_val}%")
             st.markdown(f"**📍 सेक्टर:** {top_trade.get('sector', 'N/A')}")
             st.markdown(f"**⚡ एक्शन सिग्नल:** `{top_trade.get('signal', 'NO SIGNAL')}`")
         
         with col2:
             st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स और सही गणना:")
-            # यहाँ सही पैरामीटर 'unsafe_allow_html=True' लागू कर दिया गया है
+            st.markdown(f"* **प्रवेश मूल्य (Entry Price):** <span style='color:#3498db; font-size:20px; font-weight:bold;'>₹{price_val:.2f} पर ऑर्डर लगाएँ</span>", unsafe_allow_html=True)
+            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{qty_val} Shares</span>", unsafe_allow_html=True)
             st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{target_val:.2f}</span>", unsafe_allow_html=True)
             st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{sl_val:.2f}</span>", unsafe_allow_html=True)
-            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{qty_val} Shares</span>", unsafe_allow_html=True)
             
     # --- जेमिनी एआई का लाइव ओपिनियन रेंडरिंग ---
     st.markdown("### 🤖 जेमिनी एआई लाइव सिग्नल्स और वर्डिक्ट")

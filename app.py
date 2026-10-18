@@ -2,18 +2,25 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+from datetime import datetime
 from google import genai
 # 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
 from nsepythonserver import nse_quote_ltp, nse_quote
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
-st.set_page_config(page_title="AI Intraday Scalper v2", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Intraday GTT Scalper v3", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Intraday Scalper & Sector Scanner (v2 - LIVE)")
-st.caption("लाइव टिक-बाय-टिक मोमेंटम स्कैनर | नो-डिली डेटा फीड | जेमिनी एआई सिग्नल्स")
+st.title("⚡ AI Intraday GTT Scalper & Self-Learning Tracker (v3)")
+st.caption("30-मिनट ऑटोमैटिक मोमेंटम स्कैनर | टाइम-स्टैम्पड हिस्ट्री लॉग | जेमिनी एआई क्लोज्ड-लूप लर्निंग")
 
 # --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+# --- ऐप मेमोरी इनिशियलाइजेशन (Session State for History Tracking) ---
+if "trade_history" not in st.session_state:
+    st.session_state.trade_history = []  # बंद हो चुके ट्रेड्स का रिकॉर्ड
+if "active_tracked_trades" not in st.session_state:
+    st.session_state.active_tracked_trades = {}  # जो ट्रेड्स अभी लाइव ट्रैक हो रहे हैं
 
 # --- इंट्राडे रिस्क मैनेजमेंट ---
 st.sidebar.header("💰 इंट्राडे रिस्क मैनेजमेंट")
@@ -62,30 +69,31 @@ def fetch_live_market_data(ticker_sym):
     except:
         return None
 
-# --- जेमिनी AI न्यूज़ सेंटीमेंट विश्लेषण ---
-def get_ai_intraday_verdict(ticker_sym, api_key):
+# --- जेमिनी AI न्यूज़ सेंटीमेंट और सेल्फ-लर्निंग वर्डिक्ट ---
+def get_ai_intraday_verdict(ticker_sym, api_key, history_context=""):
     if not api_key:
         return "AI न्यूज़ स्कैनर बंद है (Secrets में Key जांचें)"
     try:
-        # नए google-genai SDK का सही इनिशियलाइजेशन
         client = genai.Client(api_key=api_key)
-        prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
-                  f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
-                  f"सटीक गाइडलाइन सिर्फ 1 या 2 छोटे वाक्यों में हिंदी में दो।")
+        prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} में अगले 30 मिनट के लिए फास्ट मोमेंटम बन रहा है। "
+                  f"यहाँ आज की ट्रेड हिस्ट्री और एक्यूरेसी का डेटा है: [{history_context}]. "
+                  f"अगर ऐप ने अतीत में गलतियाँ (SL Hit) की हैं, तो उसके आधार पर अपनी स्ट्रेटेजी को लाइव सुधारते हुए "
+                  f"इस स्टॉक के लिए सटीक 1-2 वाक्यों में हिंदी में गाइडलाइन दो।")
+                  
         response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
         return response.text.strip()
     except Exception as e:
         return f"एआई विश्लेषण वर्तमान में उपलब्ध नहीं है। एरर: {str(e)}"
 
 # --- लाइव डैशबोर्ड मुख्य भाग ---
-st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
+st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (30-मिनट फास्ट ट्रेंड आधारित)")
 
 if st.button("🔄 लाइव मार्केट डेटा रिफ्रेश करें"):
     st.rerun()
 
 all_intraday_trades = []
 
-with st.spinner("सभी सेक्टर्स का लाइव वॉल्यूम और मोमेंटम स्कैन किया जा रहा है..."):
+with st.spinner("सभी सेक्टर्स का 30-मिनट लाइव वॉल्यूम स्कैन किया जा रहा है..."):
     for sector, stocks in SECTOR_UNIVERSE.items():
         for name, sym in stocks.items():
             market_data = fetch_live_market_data(sym)
@@ -106,18 +114,19 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             target = 0.0
             score = 0.0
             
-            if last_price > open_price and price_change_pct > 0.4:
-                signal = "📈 BUY ABOVE (Long)"
-                entry_price = float(last_price + (last_price * 0.001))   
-                stop_loss = float(entry_price - (entry_price * 0.010))     
-                target = float(entry_price + (entry_price * 0.025))        
-                score = float(price_change_pct * 1.5) 
-            elif last_price < open_price and price_change_pct < -0.4:
-                signal = "📉 SELL BELOW (Short)"
-                entry_price = float(last_price - (last_price * 0.001))   
-                stop_loss = float(entry_price + (entry_price * 0.010))     
-                target = float(entry_price - (entry_price * 0.025))        
-                score = float(abs(price_change_pct) * 1.5)
+            # 30-मिनट फास्ट मोमेंटम लॉजिक (0.3% फ़िल्टर, 0.6% SL, 1.2% Target)
+            if last_price > open_price and price_change_pct > 0.3:
+                signal = "⚡ GTT BUY ABOVE"
+                entry_price = float(last_price + (last_price * 0.0005))   
+                stop_loss = float(entry_price - (entry_price * 0.006))     
+                target = float(entry_price + (entry_price * 0.012))        
+                score = float(price_change_pct * 2.0) 
+            elif last_price < open_price and price_change_pct < -0.3:
+                signal = "⚡ GTT SELL BELOW"
+                entry_price = float(last_price - (last_price * 0.0005))   
+                stop_loss = float(entry_price + (entry_price * 0.006))     
+                target = float(entry_price - (entry_price * 0.012))        
+                score = float(abs(price_change_pct) * 2.0)
 
             if signal != "NO SIGNAL":
                 per_share_risk = abs(entry_price - stop_loss)
@@ -125,7 +134,7 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
                 max_qty_allowed = int((capital * 5) // entry_price)
                 final_qty = min(qty, max_qty_allowed)
                 
-                all_intraday_trades.append({
+                trade_obj = {
                     "sector": sector, 
                     "name": name, 
                     "price": round(entry_price, 2), 
@@ -137,67 +146,68 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
                     "qty": final_qty, 
                     "score": score, 
                     "sym": sym
-                })
+                }
+                all_intraday_trades.append(trade_obj)
+                
+                # लाइव ट्रैकिंग मेमोरी सेटअप
+                trade_id = f"{sym}_{signal}"
+                if trade_id not in st.session_state.active_tracked_trades:
+                    already_closed = any(h['id'] == trade_id for h in st.session_state.trade_history)
+                    if not already_closed:
+                        st.session_state.active_tracked_trades[trade_id] = {
+                            "id": trade_id, "name": name, "sym": sym, "signal": signal,
+                            "entry_level": round(entry_price, 2), "target": round(target, 2), "sl": round(stop_loss, 2),
+                            "triggered": False, "trigger_time": None
+                        }
 
-# सॉर्टिंग करना
+# --- एक्टिव ट्रेड्स का लाइव स्टेटस अपडेट इंजन ---
+for tid, tdata in list(st.session_state.active_tracked_trades.items()):
+    live_rates = next((t for t in all_intraday_trades if t['sym'] == tdata['sym']), None)
+    if live_rates:
+        current_ltp = live_rates['current_price']
+        now_str = datetime.now().strftime("%H:%M:%S")
+        
+        # 1. चेक एंट्री
+        if not tdata['triggered']:
+            if (tdata['signal'] == "⚡ GTT BUY ABOVE" and current_ltp >= tdata['entry_level']) or \
+               (tdata['signal'] == "⚡ GTT SELL BELOW" and current_ltp <= tdata['entry_level']):
+                st.session_state.active_tracked_trades[tid]['triggered'] = True
+                st.session_state.active_tracked_trades[tid]['trigger_time'] = now_str
+                st.toast(f"🔔 {tdata['name']} का एंट्री पॉइंट ट्रिगर हो गया है!")
+                
+        # 2. चेक टारगेट / एसएल
+        else:
+            is_target_hit = False
+            is_sl_hit = False
+            
+            if tdata['signal'] == "⚡ GTT BUY ABOVE":
+                if current_ltp >= tdata['target']: is_target_hit = True
+                elif current_ltp <= tdata['sl']: is_sl_hit = True
+            elif tdata['signal'] == "⚡ GTT SELL BELOW":
+                if current_ltp <= tdata['target']: is_target_hit = True
+                elif current_ltp >= tdata['sl']: is_sl_hit = True
+                
+            if is_target_hit or is_sl_hit:
+                status_text = "🎯 TARGET" if is_target_hit else "🛑 STOP LOSS"
+                st.session_state.trade_history.append({
+                    "id": tid, "name": tdata['name'], "signal": tdata['signal'],
+                    "entry_level": tdata['entry_level'], "target": tdata['target'], "sl": tdata['sl'],
+                    "trigger_time": tdata['trigger_time'], "exit_time": now_str, "result": status_text
+                })
+                del st.session_state.active_tracked_trades[tid]
+                st.toast(f"📢 {tdata['name']} का {status_text} हिट हो गया है!")
+
+# एआई के लिए हिस्ट्री कांटेक्स्ट स्ट्रिंग
+history_summary = ", ".join([f"{h['name']}({h['result']} Hit at {h['exit_time']})" for h in st.session_state.trade_history[-5:]])
+
+# स्कोर के आधार पर सॉर्ट करके फ्रंट-एंड रेंडरिंग
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
-    # फिक्स: लिस्ट का पहला स्टॉक निकालने के लिए [0] जोड़ा गया
-    top_trade = sorted_trades[0]
+    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज के टॉप 3 ऑटोमैटिक GTT स्टॉक्स मिल गए हैं!")
     
-    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
-    st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
-    
-    try:
-        price_val = float(top_trade.get('price', 0.0))
-    except:
-        price_val = 0.0
-
-    try:
-        ltp_val = float(top_trade.get('current_price', 0.0))
-    except:
-        ltp_val = 0.0
-
-    try:
-        change_val = float(top_trade.get('change', 0.0))
-    except:
-        change_val = 0.0
-
-    try:
-        target_val = float(top_trade.get('target', 0.0))
-    except:
-        target_val = 0.0
-
-    try:
-        sl_val = float(top_trade.get('sl', 0.0))
-    except:
-        sl_val = 0.0
-
-    try:
-        qty_val = int(top_trade.get('qty', 0))
-    except:
-        qty_val = 0
-
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{ltp_val}", delta=f"{change_val}%")
-            st.markdown(f"**📍 सेक्टर:** {top_trade.get('sector', 'N/A')}")
-            st.markdown(f"**⚡ एक्शन सिग्नल:** `{top_trade.get('signal', 'NO SIGNAL')}`")
+    # फिक्स: लूप के अंदर लिस्ट का एलिमेंट सही तरीके से निकाला गया है (top_trade)
+    for index, top_trade in enumerate(sorted_trades[:3]):
+        st.markdown(f"### 🏆 Priority #{index+1}: 30-Min जैकपॉट पिक ({top_trade.get('name')})")
         
-        with col2:
-            st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स और सही गणना:")
-            st.markdown(f"* **प्रवेश मूल्य (Entry Price):** <span style='color:#3498db; font-size:20px; font-weight:bold;'>₹{price_val:.2f} पर ऑर्डर लगाएँ</span>", unsafe_allow_html=True)
-            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{qty_val} Shares</span>", unsafe_allow_html=True)
-            st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{target_val:.2f}</span>", unsafe_allow_html=True)
-            st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{sl_val:.2f}</span>", unsafe_allow_html=True)
-            
-    # --- जेमिनी एआई का लाइव ओपिनियन रेंडरिंग ---
-    st.markdown("### 🤖 जेमिनी एआई लाइव सिग्नल्स और वर्डिक्ट")
-    with st.spinner("जेमिनी एआई लाइव चार्ट स्ट्रक्चर और सेंटीमेंट का विश्लेषण कर रहा है..."):
-        ai_verdict = get_ai_intraday_verdict(top_trade.get('sym', ''), gemini_api_key)
-        st.info(f"💡 **एआई गाइडलाइन:** {ai_verdict}")
-        
-else:
-    st.warning("⚠️ फ़िलहाल किसी भी स्टॉक में निर्धारित इंट्राडे मोमेंटम (0.4% से ज़्यादा का उतार-चढ़ाव) नहीं मिला है। लाइव मार्केट खुलने पर दोबारा रिफ्रेश करें।")
+        try:

@@ -47,7 +47,7 @@ SECTOR_UNIVERSE = {
     },
     "🛒 CONSUMER GOODS & OTHERS": {
         "ITC": "ITC", "Hindustan Unilever": "HINDUNILVR", 
-        "Bharti Airtel": "BHARTIARTL", "Larsen &导 L&T": "LT", "Sun Pharma": "SUNPHARMA"
+        "Bharti Airtel": "BHARTIARTL", "Larsen & Toubro": "LT", "Sun Pharma": "SUNPHARMA"
     }
 }
 
@@ -117,7 +117,7 @@ with st.spinner("सभी सेक्टर्स का 30-मिनट ल�
             target = 0.0
             score = 0.0
             
-            # 30-मिनट फास्ट मोमेंटम लॉजिक
+            # 30-मिनट फास्ट मोमेंटम लॉजिक (0.3% फ़िल्टर, 0.6% SL, 1.2% Target)
             if last_price > open_price and price_change_pct > 0.3:
                 signal = "⚡ GTT BUY ABOVE"
                 entry_price = float(last_price + (last_price * 0.0005))   
@@ -163,7 +163,7 @@ with st.spinner("सभी सेक्टर्स का 30-मिनट ल�
                             "triggered": False, "trigger_time": None
                         }
 
-# --- एक्टिव ट्रेड्स का लाइव स्टेटस अपडेट引擎 ---
+# --- एक्टिव ट्रेड्स का लाइव स्टेटस अपडेट इंजन ---
 for tid, tdata in list(st.session_state.active_tracked_trades.items()):
     live_rates = next((t for t in all_intraday_trades if t['sym'] == tdata['sym']), None)
     if live_rates:
@@ -212,4 +212,3 @@ if sorted_trades:
         
         try:
             price_val = float(top_trade.get('price', 0.0))
-            ltp_val = float(top_trade.get('current_price', 0.0))

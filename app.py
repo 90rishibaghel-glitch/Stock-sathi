@@ -120,7 +120,7 @@ bank_label = "दबाव में (मंदी)" if m_vectors["BANKNIFTY"] =
 bank_delta = f"↓ {bank_label}" if m_vectors["BANKNIFTY"] == "DOWNTREND" else f"↑ {bank_label}"
 c2.metric(label="Bank Nifty गति", value=m_vectors["BANKNIFTY"], delta=bank_delta, delta_color="inverse" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "normal")
 
-c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका alpha (Alpha) और वॉल्यूम बेहद असाधारण हो।")
+c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका alpha (Alpha) और वॉल्यूम बेहद असाधारण हो行")
 
 if "scan_results" not in st.session_state:
     st.session_state["scan_results"] = None
@@ -181,21 +181,23 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
             qty = min(qty, int(capital // last_price))
             
-            # 100% फ्लैट सिंगल-लाइन अपेंड - कोई डिक्शनरी/टुपल वेरिएबल ब्रैकेट नहीं (Zero-Risk Compiler Strategy)
-            all_setups.append([name, ticker, direction, round(accuracy_score, 1), round(last_price, 2), round(last_price, 2), round(target, 2), round(stop_loss, 2), qty, round(v_ratio, 2), round(rsi, 1), breakout_status, ai_reason])
+            # शुद्ध इंडेक्स टुपल (पहला एलिमेंट एक्यूरेसी स्कोर है ताकि सॉर्टिंग बिल्कुल सही हो)
+            all_setups.append((round(accuracy_score, 1), name, ticker, direction, round(last_price, 2), round(target, 2), round(stop_loss, 2), qty, round(v_ratio, 2), round(rsi, 1), breakout_status, ai_reason))
             
-        st.session_state["scan_results"] = sorted(all_setups, key=lambda x: x[3], reverse=True)[:3]
+        st.session_state["scan_results"] = sorted(all_setups, key=lambda x: x[0], reverse=True)[:3]
 
-# --- परिणामों को स्क्रीन पर प्रदर्शित करना ---
+# --- परिणामों को स्क्रीन पर प्रदर्शित करना (क्लीन विज़ुअल फिक्स) ---
 if st.session_state["scan_results"]:
     top_trades = st.session_state["scan_results"]
-    st.subheader("🔥 सर्वोच्च सटीकता वाले टॉप 3 प्रायोरिटी लाइव ठेवा")
+    st.subheader("🔥 सर्वोच्च सटीकता वाले टॉप 3 प्रायोरिटी लाइव सेटअप")
     
     for rank, trade in enumerate(top_trades, 1):
         with st.container(border=True):
             cols = st.columns(3)
-            with cols[0]:
+            with cols:
                 st.subheader(f"🏆 रैंक 0{rank}")
-                st.markdown(f"### **{trade[0]}**")
-                st.caption(f"सिंबल: {trade[1]}")
-                if "BREAKOUT" in trade[11]: st.success(f"⚡ {trade[11]}")
+                st.markdown(f"### **{trade[1]}**")
+                st.caption(f"सिंबल: {trade[2]}")
+                
+                # ब्रेकआउट अलर्ट विज़ुअल कार्ड्स
+                if "BREAKOUT" in trade[10]:

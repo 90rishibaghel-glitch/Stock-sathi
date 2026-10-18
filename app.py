@@ -66,10 +66,11 @@ def fetch_live_market_data(ticker_sym):
             "high_price": high_price,
             "low_price": low_price
         }
-    except:
+    except Exception as e:
+        # यहाँ पूरा एक्सेप्शन हैंडलिंग ब्लॉक जोड़ दिया गया है ताकि नेटवर्क एरर आने पर ऐप बंद न हो
         return None
 
-# --- जेमिनी AI न्यूज़ सेंटीमेंट और सेल्फ-लर्निंग वर्डिक्ट ---
+# --- जेमिनी AI न्यूज़ सेंटीमेंट और भविष्यवाणी विश्लेषण ---
 def get_ai_intraday_verdict(ticker_sym, api_key, history_context=""):
     if not api_key:
         return "AI न्यूज़ स्कैनर बंद है (Secrets में Key जांचें)"
@@ -100,8 +101,11 @@ with st.spinner("सभी सेक्टर्स का 30-मिनट ल�
             if market_data is None:
                 continue
             
-            last_price = float(market_data["last_price"])
-            open_price = float(market_data["open_price"])
+            try:
+                last_price = float(market_data["last_price"])
+                open_price = float(market_data["open_price"])
+            except (TypeError, ValueError):
+                continue
             
             if open_price == 0:
                 continue
@@ -167,7 +171,7 @@ for tid, tdata in list(st.session_state.active_tracked_trades.items()):
         current_ltp = live_rates['current_price']
         now_str = datetime.now().strftime("%H:%M:%S")
         
-        # 1. चेक एंट्री
+        # 1. चेक एंट्री ट्रिगर
         if not tdata['triggered']:
             if (tdata['signal'] == "⚡ GTT BUY ABOVE" and current_ltp >= tdata['entry_level']) or \
                (tdata['signal'] == "⚡ GTT SELL BELOW" and current_ltp <= tdata['entry_level']):
@@ -175,7 +179,7 @@ for tid, tdata in list(st.session_state.active_tracked_trades.items()):
                 st.session_state.active_tracked_trades[tid]['trigger_time'] = now_str
                 st.toast(f"🔔 {tdata['name']} का एंट्री पॉइंट ट्रिगर हो गया है!")
                 
-        # 2. चेक टारगेट / एसएल
+        # 2. चेक टारगेट / एसएल एग्जिट
         else:
             is_target_hit = False
             is_sl_hit = False
@@ -206,8 +210,4 @@ sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=Tr
 if sorted_trades:
     st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज के टॉप 3 ऑटोमैटिक GTT स्टॉक्स मिल गए हैं!")
     
-    # फिक्स: लूप के अंदर लिस्ट का एलिमेंट सही तरीके से निकाला गया है (top_trade)
     for index, top_trade in enumerate(sorted_trades[:3]):
-        st.markdown(f"### 🏆 Priority #{index+1}: 30-Min जैकपॉट पिक ({top_trade.get('name')})")
-        
-        try:

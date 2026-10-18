@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import time
 from google import genai
-# yfinance को पूरी तरह हटाकर 100% लाइव क्लाउड-फ्रेंडली nsepythonserver इम्पोर्ट किया गया है
+# 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
 from nsepythonserver import nse_quote_ltp, nse_quote
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
@@ -20,7 +20,7 @@ st.sidebar.header("💰 इंट्राडे रिस्क मैनेज
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
 
-# --- 25+ मल्टी-सेक्टर स्टॉक यूनिवर्स (Yahoo Finance ".NS" हटा दिया गया है) ---
+# --- 25+ मल्टी-सेक्टर स्टॉक यूनिवर्स ---
 SECTOR_UNIVERSE = {
     "🏦 BANKING & FINANCE": {
         "HDFC Bank": "HDFCBANK", "ICICI Bank": "ICICIBANK", 
@@ -47,10 +47,10 @@ SECTOR_UNIVERSE = {
 # --- 100% लाइव डेटा फेचिंग इंजन (NSE लाइव फीड) ---
 def fetch_live_market_data(ticker_sym):
     try:
-        # लाइव भाव (Last Traded Price) सीधे NSE से
+        # लाइव भाव सीधे NSE से निकालकर तुरंत float में बदलना
         ltp = float(nse_quote_ltp(ticker_sym))
         
-        # आज का प्राइसबैंड और ओपन/हाई/लो डेटा निकालना (नया nse_quote स्ट्रक्चर)
+        # आज का ओपन/हाई/लो डेटा निकालना और उसे float में बदलना
         meta_data = nse_quote(ticker_sym, "priceInfo")
         open_price = float(meta_data['open'])
         high_price = float(meta_data['intraDayHighLow']['max'])
@@ -82,7 +82,7 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
 # --- लाइव डैशबोर्ड मुख्य भाग ---
 st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
 
-if st.button("🔄 लाइव特色 मार्केट डेटा रिफ्रेश करें"):
+if st.button("🔄 लाइव मार्केट डेटा रिफ्रेश करें"):
     st.rerun()
 
 all_intraday_trades = []
@@ -94,23 +94,27 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             if market_data is None:
                 continue
             
-            last_price = market_data["last_price"]
-            open_price = market_data["open_price"]
+            last_price = float(market_data["last_price"])
+            open_price = float(market_data["open_price"])
             
+            # ज़ीरो प्रिवेंशन गार्डरेल
+            if open_price == 0:
+                continue
+                
             # लाइव चेंज% की गणना
-            price_change_pct = ((last_price - open_price) / open_price) * 100
+            price_change_pct = float(((last_price - open_price) / open_price) * 100)
             
             signal = "NO SIGNAL"
             stop_loss = 0.0
             target = 0.0
             score = 0.0
             
-            # मजबूत ब्रेकआउट गणना (Float सुरक्षित और सटीक टाइपकास्टिंग)
+            # मजबूत ब्रेकआउट गणना
             if last_price > open_price and price_change_pct > 0.4:
                 signal = "📈 BUY (Long)"
                 stop_loss = float(last_price - (last_price * 0.007)) 
                 target = float(last_price + (last_price * 0.015))    
-                score = float(price_change_pct * 1.5) # मोमेंटम स्कोर
+                score = float(price_change_pct * 1.5) 
             elif last_price < open_price and price_change_pct < -0.4:
                 signal = "📉 SELL (Short)"
                 stop_loss = float(last_price + (last_price * 0.007))
@@ -134,6 +138,7 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
+    # 🏆 री-चेक फिक्स: यहाँ बिल्कुल सही इंडेक्स [0] लगा दिया है ताकि एरर न आए
     top_trade = sorted_trades[0]
     
     st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
@@ -158,4 +163,4 @@ if sorted_trades:
             st.info(f"🤖 **एआई (AI) एक्सपर्ट राय:** {ai_verdict}")
 
 else:
-    st.info("💡 अभी मार्केट में किसी भी बड़े स्टॉक में कोई मजबूत ब्रेकआउट या विश्वसनीय सिग्नल नहीं बना है। लाइव मार्केट (9:15 AM - 3:30 PM) के दौरान 'लाइव मार्केट डेटा रिफ्रेश करें' बटन दबाएं।")
+    st.info("💡 अभी मार्केट में किसी भी बड़े स्टॉक में कोई मजबूत ब्रेकआउट या विश्वसनीय सिग्नल नहीं बना है। लाइव मार्केट (9:15 AM - 3:30 PM) के दौरान 'लाइव特色 मार्केट डेटा रिफ्रेश करें' बटन दबाएं।")

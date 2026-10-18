@@ -260,4 +260,3 @@ if top_3:
             chart_url = f"https://tradingview.com{setup['ticker']}/"
             st.link_button(f"📉 {setup['ticker']} का लाइव चार्ट देखें (TradingView)", chart_url, use_container_width=True)
 else:
-    

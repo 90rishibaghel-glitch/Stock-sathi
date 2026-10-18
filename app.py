@@ -21,7 +21,7 @@ if "authenticated" not in st.session_state:
 if not st.session_state["authenticated"]:
     with st.sidebar:
         st.subheader("🔒 सुरक्षा एक्सेस")
-        user_password = st.text_input("मास्टर पासवर्ड दर्ज करें:", type="password")
+        user_password = st.text_input("मास्टर पासवर्ड दर्ज करें:", type="password", key="login_pass")
         if st.button("अनलॉक करें") or (user_password == MASTER_PASSWORD and user_password):
             if user_password == MASTER_PASSWORD:
                 st.session_state["authenticated"] = True
@@ -34,7 +34,7 @@ if not st.session_state["authenticated"]:
 # --- जेमिनी एआई की प्रबंधन (Crash-Proof) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not gemini_api_key:
-    gemini_api_key = st.sidebar.text_input("Gemini API Key दर्ज करें (न्यूज़ एनालिसिस के लिए):", type="password")
+    gemini_api_key = st.sidebar.text_input("Gemini API Key दर्ज करें (न्यूज़ एनालिसिस के लिए):", type="password", key="gemini_key")
 
 # --- साइडबार सेटिंग्स (यूजर पूँजी नियम) ---
 with st.sidebar:
@@ -113,7 +113,7 @@ with st.spinner("वैश्विक और घरेलू सूचकां
     m_vectors = get_market_vectors()
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Nifty 50 मुख्य दिशा", m_vectors["NIFTY"], delta="अनुकূল" if m_vectors["NIFTY"]=="UPTREND" else "सतर्क रहें", delta_color="normal")
+c1.metric("Nifty 50 मुख्य दिशा", m_vectors["NIFTY"], delta="अनुकूल" if m_vectors["NIFTY"]=="UPTREND" else "सतर्क रहें", delta_color="normal")
 c2.metric("Bank Nifty गति", m_vectors["BANKNIFTY"], delta="बैंकिंग सपोर्ट" if m_vectors["BANKNIFTY"]=="UPTREND" else "दबाव में", delta_color="normal")
 c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका अल्फा (Alpha) और वॉल्यूम बेहद असाधारण हो।")
 
@@ -155,7 +155,6 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             v_ratio = float(vol.iloc[-1] / v20) if v20 > 0 else 1.0
             
             # 3. 20-डे हाई/लो ब्रेकआउट अलर्ट इंजन
-            # करंट डे (लास्ट इंडेक्स) को छोड़कर पिछले 20 दिनों का हाई/लो देखना
             prev_20_days_high = float(high.iloc[-21:-1].max())
             prev_20_days_low = float(low.iloc[-21:-1].min())
             
@@ -164,16 +163,16 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             
             if last_price > prev_20_days_high:
                 breakout_status = "💥 20D HIGH BREAKOUT"
-                breakout_bonus = 10  # ब्रेकआउट पर सटीकता स्कोर बूस्ट
+                breakout_bonus = 10
             elif last_price < prev_20_days_low:
                 breakout_status = "⚠️ 20D LOW BREAKDOWN"
-                breakout_bonus = 5   # शॉर्टिंग अपॉर्चुनिटी के लिए बूस्ट
+                breakout_bonus = 5
             
             # 4. एआई न्यूज़ बूस्टर स्कोर
             ai_boost, ai_reason = ai_news_scorer(ticker, gemini_api_key)
             
             # 5. **अक्रॉस-द-बोर्ड सटीकता स्कोरिंग मैट्रिक्स (0 - 100)**
-            accuracy_score = 60  # बेस स्कोर
+            accuracy_score = 60
             
             if last_price > ma20 > ma50: accuracy_score += 15
             elif last_price < ma20 < ma50: accuracy_score -= 15
@@ -181,9 +180,8 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             if v_ratio >= 1.5: accuracy_score += 10
             if 50 <= rsi <= 65: accuracy_score += 10
             
-            # ब्रेकआउट और एआई का संयुक्त वेटेज जोड़ना
             accuracy_score += (ai_boost + breakout_bonus)
-            accuracy_score = max(5, min(accuracy_score, 99.5)) # स्कोर बाउंड्री लॉकर
+            accuracy_score = max(5, min(accuracy_score, 99.5))
             
             # 6. तकनीकी रिस्क प्रबंधन (ATR आधारित स्टॉप-लॉस)
             tr = pd.concat([(high-low), (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
@@ -193,14 +191,12 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             stop_loss = last_price - (1.6 * atr)
             target = last_price + (2.5 * atr)
             
-            # डाउन मार्केट काउंटर स्ट्रेटजी (शॉर्ट-सेलिंग)
             if m_vectors["NIFTY"] == "DOWNTREND" and last_price < ma20:
                 direction = "SELL (Short)"
                 stop_loss = last_price + (1.6 * atr)
                 target = last_price - (2.5 * atr)
                 accuracy_score += 5 
                 
-            # रिस्क साइजिंग कैलकुलेटर (₹250 मैक्स लॉस लिमिट के आधार पर शेयर क्वांटिटी)
             risk_per_share = abs(last_price - stop_loss)
             qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
             qty = min(qty, int(capital // last_price))
@@ -209,3 +205,12 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
                 "Company": name, "Ticker": ticker, "Direction": direction,
                 "Accuracy": round(accuracy_score, 1), "Live Price": round(last_price, 2),
                 "Entry": round(last_price, 2), "Target": round(target, 2), "Stop-Loss": round(stop_loss, 2),
+                "Qty": qty, "Volume_Surge": round(v_ratio, 2), "RSI": round(rsi, 1), 
+                "Alert": breakout_status, "AI_Verdict": ai_reason
+            })
+            
+        st.session_state["scan_results"] = sorted(all_setups, key=lambda x: x['Accuracy'], reverse=True)[:3]
+
+# --- परिणामों को स्क्रीन पर प्रदर्शित करना ---
+if st.session_state["scan_results"]:
+    top_trades = st.session_state["scan_results"]

@@ -107,7 +107,7 @@ def get_live_macro_data():
                     if "FII CM" in row.text or "FII/FPI" in row.text:
                         cols = row.find_all("td")
                         if len(cols) >= 2:
-                            fii_flow = f"{cols.text.strip()} Cr"
+                            fii_flow = f"{cols[1].text.strip()} Cr"
                             break
     except Exception:
         pass
@@ -139,7 +139,7 @@ def analyze_news_with_gemini(ticker, news_list, api_key):
         client = genai.Client(api_key=api_key)
         
         prompt = f"""
-        तुम एक प्रोफेशनल शेयर बाजार एक्सपर्ट हो। तुम्हें {ticker} स्टॉक की इन ताज़ा खबरों का विश्लेषण करना है:
+        तुम एक प्रोफेशनल शेयर बाजार एक्सपर्ट हो। तुम्हें {ticker} STOCK की इन ताज़ा खबरों का विश्लेषण करना है:
         {combined_news}
         
         इस खबर के आधार पर STOCK को -20 से +20 के बीच एक स्कोर दो (अच्छी खबर के लिए प्लस, बुरी के लिए माइनस)।
@@ -259,5 +259,5 @@ if top_3:
             
             chart_url = f"https://tradingview.com{setup['ticker']}/"
             st.link_button(f"📉 {setup['ticker']} का लाइव चार्ट देखें (TradingView)", chart_url, use_container_width=True)
-            else:
-            
+else:
+    

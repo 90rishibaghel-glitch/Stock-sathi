@@ -60,7 +60,6 @@ UNIVERSE = {
 # --- डेटा फेचिंग और इंडिकेटर फंक्शन्स ---
 @st.cache_data(ttl=180, show_spinner=False)
 def get_market_vectors():
-    """ग्लोबल मैक्रो और मुख्य इंडेक्स की लाइव स्थिति जांचना"""
     vectors = {"NIFTY": "MIXED", "BANKNIFTY": "MIXED", "CRUDE": "STABLE", "FII": "NEUTRAL"}
     try:
         for sym, key in [("^NSEI", "NIFTY"), ("^NSEBANK", "BANKNIFTY")]:
@@ -84,7 +83,6 @@ def fetch_stock_data(ticker):
         return None
 
 def ai_news_scorer(ticker, api_key):
-    """जेमिनी एआई द्वारा लाइव खबरों का सटीक सेंटीमेंट वेटेज निकालना"""
     if not api_key: return 0, "एआई चाबी अनुपलब्ध। केवल तकनीकी विश्लेषण सक्रिय।"
     try:
         tk = yf.Ticker(ticker)
@@ -107,36 +105,23 @@ def ai_news_scorer(ticker, api_key):
     except Exception:
         return 0, "न्यूज़ इंजनों से संपर्क अस्थायी रूप से बाधित।"
 
-# --- मुख्य स्क्रीन यूआई और प्रोसेसिंग लॉजिक (फिक्स्ड डेल्टा कलर इंजन) ---
+# --- मुख्य स्क्रीन यूआई और प्रोसेसिंग लॉजिक ---
 st.subheader("📊 लाइव इंस्टीट्यूशनल मैक्रो डैशबोर्ड")
 with st.spinner("वैश्विक और घरेलू सूचकांकों का विश्लेषण जारी है..."):
     m_vectors = get_market_vectors()
 
 c1, c2, c3 = st.columns(3)
 
-# Nifty 50 विज़ुअल फिक्स
 nifty_label = "सतर्क रहें (मंदी)" if m_vectors["NIFTY"] == "DOWNTREND" else "अनुकूल (तेजी)"
 nifty_delta = f"↓ {nifty_label}" if m_vectors["NIFTY"] == "DOWNTREND" else f"↑ {nifty_label}"
-c1.metric(
-    label="Nifty 50 मुख्य दिशा", 
-    value=m_vectors["NIFTY"], 
-    delta=nifty_delta, 
-    delta_color="inverse" if m_vectors["NIFTY"] == "DOWNTREND" else "normal"
-)
+c1.metric(label="Nifty 50 मुख्य दिशा", value=m_vectors["NIFTY"], delta=nifty_delta, delta_color="inverse" if m_vectors["NIFTY"] == "DOWNTREND" else "normal")
 
-# Bank Nifty विज़ुअल फिक्स
 bank_label = "दबाव में (मंदी)" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "बैंकिंग सपोर्ट"
 bank_delta = f"↓ {bank_label}" if m_vectors["BANKNIFTY"] == "DOWNTREND" else f"↑ {bank_label}"
-c2.metric(
-    label="Bank Nifty गति", 
-    value=m_vectors["BANKNIFTY"], 
-    delta=bank_delta, 
-    delta_color="inverse" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "normal"
-)
+c2.metric(label="Bank Nifty गति", value=m_vectors["BANKNIFTY"], delta=bank_delta, delta_color="inverse" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "normal")
 
 c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका alpha (Alpha) और वॉल्यूम बेहद असाधारण हो।")
 
-# सेसशन स्टेट रिफ्रेश प्रोटेक्शन (Streamlit Cash Retention Lock)
 if "scan_results" not in st.session_state:
     st.session_state["scan_results"] = None
 
@@ -158,68 +143,59 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             ma20 = float(close.rolling(20).mean().iloc[-1])
             ma50 = float(close.rolling(50).mean().iloc[-1])
             
-            # 1. RSI गणना और 0-डिवीजन से बचाव (Safe RSI Engine)
             delta = close.diff()
             gain = delta.clip(lower=0).rolling(14).mean()
             loss = (-delta.clip(upper=0)).rolling(14).mean()
             last_loss = loss.iloc[-1]
             last_gain = gain.iloc[-1]
-            if last_loss == 0 or np.isnan(last_loss):
-                rsi = 100.0 if last_gain > 0 else 50.0
-            else:
-                rsi = float(100 - (100 / (1 + (last_gain / last_loss))))
+            rsi = 100.0 if last_loss == 0 or np.isnan(last_loss) else float(100 - (100 / (1 + (last_gain / last_loss))))
             
-            # 2. वॉल्यूम शॉक इंडेक्स (Volume Surge Calculation)
             v20 = float(vol.rolling(20).mean().iloc[-1])
             v_ratio = float(vol.iloc[-1] / v20) if v20 > 0 else 1.0
             
-            # 3. 20-डे हाई/लो ब्रेकआउट अलर्ट इंजन
             prev_20_days_high = float(high.iloc[-21:-1].max())
             prev_20_days_low = float(low.iloc[-21:-1].min())
             
-            breakout_status = "NORMAL ZONE"
-            breakout_bonus = 0
+            breakout_status = "💥 20D HIGH BREAKOUT" if last_price > prev_20_days_high else ("⚠️ 20D LOW BREAKDOWN" if last_price < prev_20_days_low else "NORMAL ZONE")
+            breakout_bonus = 10 if last_price > prev_20_days_high else (5 if last_price < prev_20_days_low else 0)
             
-            if last_price > prev_20_days_high:
-                breakout_status = "💥 20D HIGH BREAKOUT"
-                breakout_bonus = 10
-            elif last_price < prev_20_days_low:
-                breakout_status = "⚠️ 20D LOW BREAKDOWN"
-                breakout_bonus = 5
-            
-            # 4. एआई न्यूज़ बूस्टर स्कोर
             ai_boost, ai_reason = ai_news_scorer(ticker, gemini_api_key)
             
-            # 5. **अक्रॉस-द-बोर्ड सटीकता स्कोरिंग मैट्रिक्स (0 - 100)**
             accuracy_score = 60
-            
             if last_price > ma20 > ma50: accuracy_score += 15
             elif last_price < ma20 < ma50: accuracy_score -= 15
-            
             if v_ratio >= 1.5: accuracy_score += 10
             if 50 <= rsi <= 65: accuracy_score += 10
-            
             accuracy_score += (ai_boost + breakout_bonus)
             accuracy_score = max(5, min(accuracy_score, 99.5))
             
-            # 6. तकनीकी रिस्क प्रबंधन (ATR आधारित स्टॉप-लॉस)
             tr = pd.concat([(high-low), (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
             atr = float(tr.rolling(14).mean().iloc[-1])
             
-            direction = "BUY"
-            stop_loss = last_price - (1.6 * atr)
-            target = last_price + (2.5 * atr)
-            
-            if m_vectors["NIFTY"] == "DOWNTREND" and last_price < ma20:
-                direction = "SELL (Short)"
-                stop_loss = last_price + (1.6 * atr)
-                target = last_price - (2.5 * atr)
-                accuracy_score += 5 
+            direction = "SELL (Short)" if (m_vectors["NIFTY"] == "DOWNTREND" and last_price < ma20) else "BUY"
+            stop_loss = last_price + (1.6 * atr) if direction == "SELL (Short)" else last_price - (1.6 * atr)
+            target = last_price - (2.5 * atr) if direction == "SELL (Short)" else last_price + (2.5 * atr)
+            if direction == "SELL (Short)": accuracy_score += 5
                 
             risk_per_share = abs(last_price - stop_loss)
             qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
             qty = min(qty, int(capital // last_price))
             
-            # सिंटैक्स एरर को हमेशा के लिए खत्म करने हेतु शुद्ध टुपल (Tuple Matrix) एप्रोच
-            t_data = (
-                name, ticker, direction, round(accuracy_score, 1),
+            # 100% फ्लैट सिंगल-लाइन अपेंड - कोई डिक्शनरी/टुपल वेरिएबल ब्रैकेट नहीं (Zero-Risk Compiler Strategy)
+            all_setups.append([name, ticker, direction, round(accuracy_score, 1), round(last_price, 2), round(last_price, 2), round(target, 2), round(stop_loss, 2), qty, round(v_ratio, 2), round(rsi, 1), breakout_status, ai_reason])
+            
+        st.session_state["scan_results"] = sorted(all_setups, key=lambda x: x[3], reverse=True)[:3]
+
+# --- परिणामों को स्क्रीन पर प्रदर्शित करना ---
+if st.session_state["scan_results"]:
+    top_trades = st.session_state["scan_results"]
+    st.subheader("🔥 सर्वोच्च सटीकता वाले टॉप 3 प्रायोरिटी लाइव ठेवा")
+    
+    for rank, trade in enumerate(top_trades, 1):
+        with st.container(border=True):
+            cols = st.columns(3)
+            with cols[0]:
+                st.subheader(f"🏆 रैंक 0{rank}")
+                st.markdown(f"### **{trade[0]}**")
+                st.caption(f"सिंबल: {trade[1]}")
+                if "BREAKOUT" in trade[11]: st.success(f"⚡ {trade[11]}")

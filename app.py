@@ -1,254 +1,211 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
-import datetime
+from datetime import datetime
 from google import genai
 
-# 1. PAGE CONFIGURATION
-st.set_page_config(page_title="Stock Saathi Supreme", page_icon="📈", layout="centered")
+# 1. पेज कॉन्फ़िगरेशन और थीम सेटिंग्स
+st.set_page_config(page_title="Stock Saathi - Institutional Matrix", page_icon="🎯", layout="wide")
 
-# --- APP PASSWORD PROTECTION SYSTEM ---
+st.title("🎯 Stock Saathi (Institutional Matrix Engine)")
+st.caption("मल्टी-वेक्टर एक्यूरेसी स्कैनर | 20D ब्रेकआउट अलर्ट | लाइव मैक्रो पल्स | जेमिनी एआई न्यूज़ गन")
+
+# --- सुरक्षा प्रणाली (Master Lock) ---
 MASTER_PASSWORD = "Saathi@2026"
-
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-st.sidebar.subheader("🔒 ऐप सुरक्षा लॉक")
-
 if not st.session_state["authenticated"]:
-    user_password = st.sidebar.text_input("ऐप का मास्टर पासवर्ड डालें:", type="password")
-    if st.sidebar.button("अनलॉक करें (Unlock)") or user_password:
-        if user_password == MASTER_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        elif user_password and user_password != MASTER_PASSWORD:
-            st.sidebar.error("❌ गलत पासवर्ड!")
-            
-    st.title("🎯 Stock Saathi (Supreme Master)")
-    st.info("👋 सुरक्षा कवच सक्रिय है! ऐप का इस्तेमाल शुरू करने के लिए कृपया साइडबार में अपना **मास्टर पासवर्ड** दर्ज करें।")
+    with st.sidebar:
+        st.subheader("🔒 सुरक्षा एक्सेस")
+        user_password = st.text_input("मास्टर पासवर्ड दर्ज करें:", type="password")
+        if st.button("अनलॉक करें") or (user_password == MASTER_PASSWORD and user_password):
+            if user_password == MASTER_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("❌ गलत पासवर्ड!")
+    st.info("👋 कृपया जारी रखने के लिए साइडबार में अपना सुरक्षा पासवर्ड दर्ज करें।")
     st.stop()
 
-# --- मुख्य ऐप इंटरफ़ेस (पासवर्ड सही होने पर) ---
-st.title("🎯 Stock Saathi (Supreme Master)")
-st.caption("अल्ट्रा-एक्यूरेसी एआई रैंकिंग इंजन | 100% लाइव मैक्रो डैशबोर्ड | जेमिनी न्यूज़ एनालिसिस")
-
-if st.sidebar.button("🔒 ऐप को दोबारा लॉक करें"):
-    st.session_state["authenticated"] = False
-    st.rerun()
-
-# --- GEMINI AI KEY SYSTEM (CRASH PROOF) ---
-gemini_api_key = None
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        gemini_api_key = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    pass
-
+# --- जेमिनी एआई की प्रबंधन (Crash-Proof) ---
+gemini_api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not gemini_api_key:
-    st.sidebar.warning("🔑 एआई चाबी लॉकर में नहीं मिली।")
-    gemini_api_key = st.sidebar.text_input("अपनी Gemini API Key यहाँ डालें:", type="password")
-    if not gemini_api_key:
-        st.info("💡 एआई स्टॉक एनालिसिस चालू करने के लिए साइडबार में जेमिनी एपीआई की (Key) डालें।")
+    gemini_api_key = st.sidebar.text_input("Gemini API Key दर्ज करें (न्यूज़ एनालिसिस के लिए):", type="password")
 
-# --- CAPITAL CONFIGURATION (सख्त पूँजी नियम) ---
-TOTAL_CAPITAL = 50000.0
-RISK_PER_TRADE_PCT = 0.5  
-MAX_RISK_INR = TOTAL_CAPITAL * (RISK_PER_TRADE_PCT / 100.0) # ₹250 मैक्सिमम लॉस लिमिट
+# --- साइडबार सेटिंग्स (यूजर पूँजी नियम) ---
+with st.sidebar:
+    st.header("⚙️ कैपिटल एलोकेशन")
+    capital = st.number_input("आपकी कुल ट्रेडिंग पूँजी (₹)", min_value=5000, max_value=100000000, value=50000, step=5000)
+    risk_pct = st.slider("एक ट्रेड में रिस्क सीमा (%)", 0.25, 2.0, 0.5, 0.25)
+    max_risk_inr = capital * (risk_pct / 100.0)
+    
+    if st.button("🔒 ऐप लॉक करें"):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
-WATCHLIST = [
-    "HDFCBANK", "ICICIBANK", "AXISBANK", "KOTAKBANK", "SBIN",
-    "RELIANCE", "TCS", "INFY", "HINDUNILVR", 
-    "ITC", "BHARTIARTL", "LT", "BAJFINANCE", "ASIANPAINT", "MARUTI"
-]
+# --- विस्तृत स्टॉक यूनिवर्स (सभी प्रमुख सेक्टर्स, बैंकिंग और इंडेक्स हेवीवेट्स) ---
+UNIVERSE = {
+    'Reliance Industries': 'RELIANCE.NS', 'HDFC Bank': 'HDFCBANK.NS',
+    'ICICI Bank': 'ICICIBANK.NS', 'State Bank of India': 'SBIN.NS',
+    'Axis Bank': 'AXISBANK.NS', 'Kotak Mahindra Bank': 'KOTAKBANK.NS',
+    'TCS': 'TCS.NS', 'Infosys': 'INFY.NS', 'Bharti Airtel': 'BHARTIARTL.NS',
+    'Larsen & Toubro': 'LT.NS', 'ITC': 'ITC.NS', 'Hindustan Unilever': 'HINDUNILVR.NS',
+    'Tata Motors': 'TATAMOTORS.NS', 'Mahindra & Mahindra': 'M&M.NS', 'Sun Pharma': 'SUNPHARMA.NS'
+}
 
-# --- DATA FETCH FUNCTIONS ---
-def get_live_macro_data():
-    nifty_price, nifty_change = "₹23,146.15", "+0.65%"
+# --- डेटा फेचिंग और इंडिकेटर फंक्शन्स ---
+@st.cache_data(ttl=180, show_spinner=False)
+def get_market_vectors():
+    """ग्लोबल मैक्रो और मुख्य इंडेक्स की लाइव स्थिति जांचना"""
+    vectors = {"NIFTY": "MIXED", "BANKNIFTY": "MIXED", "CRUDE": "STABLE", "FII": "NEUTRAL"}
     try:
-        nifty = yf.Ticker("^NSEI")
-        nifty_info = nifty.history(period="2d")
-        if not nifty_info.empty:
-            current_close = nifty_info['Close'].iloc[-1]
-            prev_close = nifty_info['Close'].iloc[-2]
-            pct_chg = ((current_close - prev_close) / prev_close) * 100
-            nifty_price = f"₹{current_close:,.2f}"
-            nifty_change = f"{'+' if pct_chg >= 0 else ''}{pct_chg:.2f}%"
+        for sym, key in [("^NSEI", "NIFTY"), ("^NSEBANK", "BANKNIFTY")]:
+            tk = yf.Ticker(sym)
+            hist = tk.history(period="50d")
+            if not hist.empty and len(hist) >= 50:
+                c = hist['Close']
+                vectors[key] = "UPTREND" if c.iloc[-1] > c.rolling(20).mean().iloc[-1] > c.rolling(50).mean().iloc[-1] else "DOWNTREND"
     except Exception:
         pass
+    return vectors
 
-    usd_inr = "₹94.96"
+def fetch_stock_data(ticker):
     try:
-        usdinr_ticker = yf.Ticker("INR=X")
-        usdinr_data = usdinr_ticker.history(period="1d")
-        if not usdinr_data.empty:
-            usd_inr = f"₹{usdinr_data['Close'].iloc[-1]:.2f}"
+        data = yf.download(ticker, period='6mo', interval='1d', progress=False, auto_adjust=True)
+        if data.empty: return None
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        return data.dropna()
     except Exception:
-        pass
+        return None
 
-    crude_oil = "$75.40"
+def ai_news_scorer(ticker, api_key):
+    """जेमिनी एआई द्वारा लाइव खबरों का सटीक सेंटीमेंट वेटेज निकालना"""
+    if not api_key: return 0, "एआई चाबी अनुपलब्ध। केवल तकनीकी विश्लेषण सक्रिय।"
     try:
-        oil_ticker = yf.Ticker("BZ=F")
-        oil_data = oil_ticker.history(period="1d")
-        if not oil_data.empty:
-            crude_oil = f"${oil_data['Close'].iloc[-1]:.2f}"
-    except Exception:
-        pass
-
-    fii_flow = "-1,857.44 Cr"
-    try:
-        url = "https://moneycontrol.com"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            table = soup.find("table")
-            if table:
-                rows = table.find_all("tr")
-                for row in rows:
-                    if "FII CM" in row.text or "FII/FPI" in row.text:
-                        cols = row.find_all("td")
-                        if len(cols) >= 2:
-                            fii_flow = f"{cols[1].text.strip()} Cr"
-                            break
-    except Exception:
-        pass
-
-    return nifty_price, nifty_change, fii_flow, crude_oil, usd_inr
-
-def get_live_price_only(ticker):
-    try:
-        url = f"https://google.com{ticker}:NSE"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=4)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            price_div = soup.find("div", {"class": "YMlKec fxKbKc"})
-            if price_div:
-                return float(price_div.text.replace("₹", "").replace(",", "").strip())
-    except Exception:
-        pass
-    return None
-
-def analyze_news_with_gemini(ticker, news_list, api_key):
-    if not api_key or not news_list:
-        return 0, "कोई ताज़ा खबर उपलब्ध नहीं है।"
-    try:
-        combined_news = "\n".join([f"- {n['title']}" for n in news_list[:3]])
+        tk = yf.Ticker(ticker)
+        news = tk.news[:3]
+        if not news: return 0, "कोई ताज़ा कॉर्पोरेट न्यूज़ नहीं मिली।"
+        
+        combined_text = "\n".join([f"- {n['title']}" for n in news])
         client = genai.Client(api_key=api_key)
         prompt = f"""
-        तुम एक प्रोफेशनल शेयर बाजार एक्सपर्ट हो। तुम्हें {ticker} STOCK की इन ताज़ा खबरों का विश्लेषण करना है:
-        {combined_news}
-        इस खबर के आधार पर STOCK को -20 से +20 के बीच एक स्कोर दो (अच्छी खबर के लिए प्लस, बुरी के लिए माइनस)।
-        जवाब में सिर्फ एक छोटा सा हिंदी वाक्य और स्कोर दो। फॉर्मेट ऐसा होना चाहिए: स्कोर|तुम्हारा विश्लेषण
-        उदाहरण: +15|तिमाही नतीजे उम्मीद से बेहतर हैं, तेजी की संभावना।
+        तुम एक हेज फंड के मुख्य क्वांट रिसर्चर हो। तुम्हें {ticker} स्टॉक की इस लाइव न्यूज़ का कठोर विश्लेषण करना है:
+        {combined_text}
+        बाजार के सेंटिमेंट को देखते हुए इस न्यूज़ को -25 से +25 के बीच एक स्कोर दो। 
+        अगर कोई विशेष खबर नहीं है तो 0 दो। 
+        जवाब केवल इस फॉर्मेट में होना चाहिए: स्कोर|एक छोटा सटीक वाक्य (हिंदी में)
+        उदाहरण: +20|शानदार तिमाही नतीजे और मार्जिन विस्तार, भारी तेजी के संकेत।
         """
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        result_text = response.text.strip()
-        if "|" in result_text:
-            score_part, analysis_part = result_text.split("|", 1)
-            return int(score_part.strip()), analysis_part.strip()
-        return 0, result_text
+        score_part, text_part = response.text.strip().split("|", 1)
+        return int(score_part.strip()), text_part.strip()
     except Exception:
-        return 0, f"एआई विश्लेषण उपलब्ध नहीं हो सका।"
+        return 0, "न्यूज़ इंजनों से संपर्क अस्थायी रूप से बाधित।"
 
-# --- DASHBOARD RENDERING ---
-st.subheader("📊 ग्लोबल मैक्रो और मार्केट डैशबोर्ड")
-n_price, n_chg, f_flow, c_oil, u_inr = get_live_macro_data()
+# --- मुख्य स्क्रीन यूआई और प्रोसेसिंग लॉजिक ---
+st.subheader("📊 लाइव इंस्टीट्यूशनल मैक्रो डैशबोर्ड")
+with st.spinner("वैश्विक और घरेलू सूचकांकों का विश्लेषण जारी है..."):
+    m_vectors = get_market_vectors()
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Nifty लाइव भाव", n_price, n_chg)
-m2.metric("FII नेट फ्लो", f_flow)
-m3.metric("क्रूड ऑयल", c_oil)
-m4.metric("USD - INR", u_inr)
+c1, c2, c3 = st.columns(3)
+c1.metric("Nifty 50 मुख्य दिशा", m_vectors["NIFTY"], delta="अनुकূল" if m_vectors["NIFTY"]=="UPTREND" else "सतर्क रहें", delta_color="normal")
+c2.metric("Bank Nifty गति", m_vectors["BANKNIFTY"], delta="बैंकिंग सपोर्ट" if m_vectors["BANKNIFTY"]=="UPTREND" else "दबाव में", delta_color="normal")
+c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका अल्फा (Alpha) और वॉल्यूम बेहद असाधारण हो।")
 
-st.subheader("🎯 आज के शीर्ष 3 प्राथमिकता वाले लाइव सेटअप")
-
-# --- SCANNER LOGIC ---
-setups = []
-for ticker in WATCHLIST:
-    try:
-        df = yf.download(f"{ticker}.NS", period="2mo", interval="1d", progress=False)
-        if df.empty or len(df) < 20:
-            continue
-        if isinstance(df.columns, pd.MultiIndex): 
-            df.columns = df.columns.get_level_values(0)
-            
-        yesterday_close = float(df['Close'].values[-1])
-        live_price = get_live_price_only(ticker)
-        
-        if not live_price or live_price <= 0:
-            live_price = yesterday_close
-            
-        if live_price < 100.0:
-            continue
-            
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['ATR'] = (df['High'] - df['Low']).rolling(window=14).mean()
-        atr_val = float(df['ATR'].values[-1]) if not pd.isna(df['ATR'].values[-1]) else (live_price * 0.025)
-        
-        ticker_obj = yf.Ticker(f"{ticker}.NS")
-        live_news = ticker_obj.news
-        
-        ai_score_boost, ai_reason = analyze_news_with_gemini(ticker, live_news, gemini_api_key)
-        
-        base_score = 70
-        base_score += ai_score_boost
-        if live_price >= yesterday_close: 
-            base_score += 5
-            
-        final_score = max(10, min(base_score, 99))
-        
-        entry = round(live_price, 2)
-        stop_loss = round(entry - (1.5 * atr_val), 2)
-        target = round(entry + (2.5 * atr_val), 2)
-        
-        risk_per_share = entry - stop_loss
-        if risk_per_share > 0:
-            quantity = int(MAX_RISK_INR // risk_per_share)
-            if (quantity * entry) > TOTAL_CAPITAL:
-                quantity = int(TOTAL_CAPITAL // entry)
-                
-            if quantity > 0:
-                setups.append({
-                    "ticker": ticker,
-                    "score": round(final_score, 1),
-                    "entry": entry,
-                    "target": target,
-                    "stop_loss": stop_loss,
-                    "quantity": quantity,
-                    "reason": ai_reason
-                })
-    except Exception:
-        continue
-
-top_3 = sorted(setups, key=lambda x: x['score'], reverse=True)[:3]
-st.sidebar.info("⏸️ हॉलिडे मोड: सप्ताहांत (Weekend) विश्लेषण सक्रिय है।")
-
-# --- OUTPUT RENDERING (CLEAN FLAT STRUCTURE) ---
-if not top_3:
-    st.info("वर्तमान में मानदंडों पर कोई स्टॉक उपलब्ध नहीं है। डेटा लोड हो रहा है...")
-    st.stop()
-
-for idx, setup in enumerate(top_3, 1):
-    with st.container(border=True):
-        col_l, col_r = st.columns(2)
-        col_l.subheader(f"🟢 {setup['ticker']}")
-        col_l.caption(f"पोजीशन 0{idx} (प्राथमिकता रैंक)")
-        col_r.metric(label="AI Accuracy Score", value=f"{setup['score']}/100")
-        
-        st.info(f"🤖 **एआई लाइव विश्लेषण:** {setup['reason']}")
-        
-        m_en, m_tg, m_sl = st.columns(3)
-        m_en.metric("Entry Price", f"₹{setup['entry']:.2f}")
-        m_tg.metric("Target (🎯)", f"₹{setup['target']:.2f}")
-        m_sl.metric("Stop-Loss (🛑)", f"₹{setup['stop_loss']:.2f}")
-        
-        st.warning(f"👉 Quantity (₹50k कैपिटल रिस्क): {setup['quantity']} शेयर (मैक्सिमम लॉस लिमिट: ₹250)")
-        
-        chart_url = f"https://tradingview.com{setup['ticker']}/"
-        st.link_button(f"📉 {setup['ticker']} का लाइव चार्ट देखें (TradingView)", chart_url, use_container_width=True)
+# सेसशन स्टेट रिफ्रेश प्रोटेक्शन (Streamlit Cash Retention Lock)
+if "scan_results" not in st.session_state:
+    st.session_state["scan_results"] = None
 
 st.markdown("---")
-st.caption("🛡️ **मास्टर कवच सक्रिय:** यह एआई इंजन और डैशबोर्ड हर सेकंड बिना किसी पुराने कैशे के लाइव इंटरनेट डेटा से सिंक होते हैं।")
+if st.button("🔎 पूरे बाजार का महा-स्कैन शुरू करें (High-Accuracy Scan)", type="primary", use_container_width=True):
+    with st.spinner("सभी कंपनियों का डेटा, डिलीवरी वॉल्यूम, ब्रेकआउट स्तर और जेमिनी लाइव न्यूज़ सिंक की जा रही है..."):
+        all_setups = []
+        
+        for name, ticker in UNIVERSE.items():
+            df = fetch_stock_data(ticker)
+            if df is None or len(df) < 30: continue
+            
+            close = df['Close'].astype(float)
+            high = df['High'].astype(float)
+            low = df['Low'].astype(float)
+            vol = df['Volume'].astype(float)
+            
+            last_price = float(close.iloc[-1])
+            ma20 = float(close.rolling(20).mean().iloc[-1])
+            ma50 = float(close.rolling(50).mean().iloc[-1])
+            
+            # 1. RSI गणना और 0-डिवीजन से बचाव (Safe RSI Engine)
+            delta = close.diff()
+            gain = delta.clip(lower=0).rolling(14).mean()
+            loss = (-delta.clip(upper=0)).rolling(14).mean()
+            last_loss = loss.iloc[-1]
+            last_gain = gain.iloc[-1]
+            if last_loss == 0 or np.isnan(last_loss):
+                rsi = 100.0 if last_gain > 0 else 50.0
+            else:
+                rsi = float(100 - (100 / (1 + (last_gain / last_loss))))
+            
+            # 2. वॉल्यूम शॉक इंडेक्स (Volume Surge Calculation)
+            v20 = float(vol.rolling(20).mean().iloc[-1])
+            v_ratio = float(vol.iloc[-1] / v20) if v20 > 0 else 1.0
+            
+            # 3. 20-डे हाई/लो ब्रेकआउट अलर्ट इंजन
+            # करंट डे (लास्ट इंडेक्स) को छोड़कर पिछले 20 दिनों का हाई/लो देखना
+            prev_20_days_high = float(high.iloc[-21:-1].max())
+            prev_20_days_low = float(low.iloc[-21:-1].min())
+            
+            breakout_status = "NORMAL ZONE"
+            breakout_bonus = 0
+            
+            if last_price > prev_20_days_high:
+                breakout_status = "💥 20D HIGH BREAKOUT"
+                breakout_bonus = 10  # ब्रेकआउट पर सटीकता स्कोर बूस्ट
+            elif last_price < prev_20_days_low:
+                breakout_status = "⚠️ 20D LOW BREAKDOWN"
+                breakout_bonus = 5   # शॉर्टिंग अपॉर्चुनिटी के लिए बूस्ट
+            
+            # 4. एआई न्यूज़ बूस्टर स्कोर
+            ai_boost, ai_reason = ai_news_scorer(ticker, gemini_api_key)
+            
+            # 5. **अक्रॉस-द-बोर्ड सटीकता स्कोरिंग मैट्रिक्स (0 - 100)**
+            accuracy_score = 60  # बेस स्कोर
+            
+            if last_price > ma20 > ma50: accuracy_score += 15
+            elif last_price < ma20 < ma50: accuracy_score -= 15
+            
+            if v_ratio >= 1.5: accuracy_score += 10
+            if 50 <= rsi <= 65: accuracy_score += 10
+            
+            # ब्रेकआउट और एआई का संयुक्त वेटेज जोड़ना
+            accuracy_score += (ai_boost + breakout_bonus)
+            accuracy_score = max(5, min(accuracy_score, 99.5)) # स्कोर बाउंड्री लॉकर
+            
+            # 6. तकनीकी रिस्क प्रबंधन (ATR आधारित स्टॉप-लॉस)
+            tr = pd.concat([(high-low), (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
+            atr = float(tr.rolling(14).mean().iloc[-1])
+            
+            direction = "BUY"
+            stop_loss = last_price - (1.6 * atr)
+            target = last_price + (2.5 * atr)
+            
+            # डाउन मार्केट काउंटर स्ट्रेटजी (शॉर्ट-सेलिंग)
+            if m_vectors["NIFTY"] == "DOWNTREND" and last_price < ma20:
+                direction = "SELL (Short)"
+                stop_loss = last_price + (1.6 * atr)
+                target = last_price - (2.5 * atr)
+                accuracy_score += 5 
+                
+            # रिस्क साइजिंग कैलकुलेटर (₹250 मैक्स लॉस लिमिट के आधार पर शेयर क्वांटिटी)
+            risk_per_share = abs(last_price - stop_loss)
+            qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
+            qty = min(qty, int(capital // last_price))
+            
+            all_setups.append({
+                "Company": name, "Ticker": ticker, "Direction": direction,
+                "Accuracy": round(accuracy_score, 1), "Live Price": round(last_price, 2),
+                "Entry": round(last_price, 2), "Target": round(target, 2), "Stop-Loss": round(stop_loss, 2),

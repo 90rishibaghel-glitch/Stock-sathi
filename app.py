@@ -47,7 +47,7 @@ SECTOR_UNIVERSE = {
     },
     "🛒 CONSUMER GOODS & OTHERS": {
         "ITC": "ITC", "Hindustan Unilever": "HINDUNILVR", 
-        "Bharti Airtel": "BHARTIARTL", "Larsen & Toubro": "LT", "Sun Pharma": "SUNPHARMA"
+        "Bharti Airtel": "BHARTIARTL", "Larsen &导 L&T": "LT", "Sun Pharma": "SUNPHARMA"
     }
 }
 
@@ -67,7 +67,6 @@ def fetch_live_market_data(ticker_sym):
             "low_price": low_price
         }
     except Exception as e:
-        # यहाँ पूरा एक्सेप्शन हैंडलिंग ब्लॉक जोड़ दिया गया है ताकि नेटवर्क एरर आने पर ऐप बंद न हो
         return None
 
 # --- जेमिनी AI न्यूज़ सेंटीमेंट और भविष्यवाणी विश्लेषण ---
@@ -118,7 +117,7 @@ with st.spinner("सभी सेक्टर्स का 30-मिनट ल�
             target = 0.0
             score = 0.0
             
-            # 30-मिनट फास्ट मोमेंटम लॉजिक (0.3% फ़िल्टर, 0.6% SL, 1.2% Target)
+            # 30-मिनट फास्ट मोमेंटम लॉजिक
             if last_price > open_price and price_change_pct > 0.3:
                 signal = "⚡ GTT BUY ABOVE"
                 entry_price = float(last_price + (last_price * 0.0005))   
@@ -164,14 +163,13 @@ with st.spinner("सभी सेक्टर्स का 30-मिनट ल�
                             "triggered": False, "trigger_time": None
                         }
 
-# --- एक्टिव ट्रेड्स का लाइव स्टेटस अपडेट इंजन ---
+# --- एक्टिव ट्रेड्स का लाइव स्टेटस अपडेट引擎 ---
 for tid, tdata in list(st.session_state.active_tracked_trades.items()):
     live_rates = next((t for t in all_intraday_trades if t['sym'] == tdata['sym']), None)
     if live_rates:
         current_ltp = live_rates['current_price']
         now_str = datetime.now().strftime("%H:%M:%S")
         
-        # 1. चेक एंट्री ट्रिगर
         if not tdata['triggered']:
             if (tdata['signal'] == "⚡ GTT BUY ABOVE" and current_ltp >= tdata['entry_level']) or \
                (tdata['signal'] == "⚡ GTT SELL BELOW" and current_ltp <= tdata['entry_level']):
@@ -179,7 +177,6 @@ for tid, tdata in list(st.session_state.active_tracked_trades.items()):
                 st.session_state.active_tracked_trades[tid]['trigger_time'] = now_str
                 st.toast(f"🔔 {tdata['name']} का एंट्री पॉइंट ट्रिगर हो गया है!")
                 
-        # 2. चेक टारगेट / एसएल एग्जिट
         else:
             is_target_hit = False
             is_sl_hit = False
@@ -201,13 +198,18 @@ for tid, tdata in list(st.session_state.active_tracked_trades.items()):
                 del st.session_state.active_tracked_trades[tid]
                 st.toast(f"📢 {tdata['name']} का {status_text} हिट हो गया है!")
 
-# एआई के लिए हिस्ट्री कांटेक्स्ट स्ट्रिंग
+# एआई के लिए हिस्ट्री कांटेक्स्ट
 history_summary = ", ".join([f"{h['name']}({h['result']} Hit at {h['exit_time']})" for h in st.session_state.trade_history[-5:]])
 
 # स्कोर के आधार पर सॉर्ट करके फ्रंट-एंड रेंडरिंग
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
-    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज के टॉप 3 ऑटोमैटिक GTT स्टॉक्स मिल गए हैं!")
+    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज के TOP 3 ऑटोमैटिक GTT स्टॉक्स मिल गए हैं!")
     
     for index, top_trade in enumerate(sorted_trades[:3]):
+        st.markdown(f"### 🏆 Priority #{index+1}: 30-Min जैकपॉट पिक ({top_trade.get('name')})")
+        
+        try:
+            price_val = float(top_trade.get('price', 0.0))
+            ltp_val = float(top_trade.get('current_price', 0.0))

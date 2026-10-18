@@ -72,7 +72,7 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
         prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
                   f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
                   f"सटीक गाइडलाइन सिर्फ 1 या 2 छोटे वाक्यों में हिंदी में दो।")
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
         return response.text.strip()
     except Exception as e:
         return f"एआई विश्लेषण वर्तमान में उपलब्ध नहीं है। एरर: {str(e)}"

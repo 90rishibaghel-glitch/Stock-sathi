@@ -107,14 +107,33 @@ def ai_news_scorer(ticker, api_key):
     except Exception:
         return 0, "न्यूज़ इंजनों से संपर्क अस्थायी रूप से बाधित।"
 
-# --- मुख्य स्क्रीन यूआई और प्रोसेसिंग लॉजिक ---
+# --- मुख्य स्क्रीन यूआई और प्रोसेसिंग लॉजिक (फिक्स्ड डेल्टा कलर इंजन) ---
 st.subheader("📊 लाइव इंस्टीट्यूशनल मैक्रो डैशबोर्ड")
 with st.spinner("वैश्विक और घरेलू सूचकांकों का विश्लेषण जारी है..."):
     m_vectors = get_market_vectors()
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Nifty 50 मुख्य दिशा", m_vectors["NIFTY"], delta="अनुकूल" if m_vectors["NIFTY"]=="UPTREND" else "सतर्क रहें", delta_color="normal")
-c2.metric("Bank Nifty गति", m_vectors["BANKNIFTY"], delta="बैंकिंग सपोर्ट" if m_vectors["BANKNIFTY"]=="UPTREND" else "दबाव में", delta_color="normal")
+
+# Nifty 50 विज़ुअल फिक्स
+nifty_label = "सतर्क रहें" if m_vectors["NIFTY"] == "DOWNTREND" else "अनुकूल"
+nifty_delta = f"↓ {nifty_label}" if m_vectors["NIFTY"] == "DOWNTREND" else f"↑ {nifty_label}"
+c1.metric(
+    label="Nifty 50 मुख्य दिशा", 
+    value=m_vectors["NIFTY"], 
+    delta=nifty_delta, 
+    delta_color="inverse" if m_vectors["NIFTY"] == "DOWNTREND" else "normal"
+)
+
+# Bank Nifty विज़ुअल फिक्स
+bank_label = "दबाव में" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "बैंकिंग सपोर्ट"
+bank_delta = f"↓ {bank_label}" if m_vectors["BANKNIFTY"] == "DOWNTREND" else f"↑ {bank_label}"
+c2.metric(
+    label="Bank Nifty गति", 
+    value=m_vectors["BANKNIFTY"], 
+    delta=bank_delta, 
+    delta_color="inverse" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "normal"
+)
+
 c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका अल्फा (Alpha) और वॉल्यूम बेहद असाधारण हो।")
 
 # सेसशन स्टेट रिफ्रेश प्रोटेक्शन (Streamlit Cash Retention Lock)
@@ -204,13 +223,3 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             all_setups.append({
                 "Company": name, "Ticker": ticker, "Direction": direction,
                 "Accuracy": round(accuracy_score, 1), "Live Price": round(last_price, 2),
-                "Entry": round(last_price, 2), "Target": round(target, 2), "Stop-Loss": round(stop_loss, 2),
-                "Qty": qty, "Volume_Surge": round(v_ratio, 2), "RSI": round(rsi, 1), 
-                "Alert": breakout_status, "AI_Verdict": ai_reason
-            })
-            
-        st.session_state["scan_results"] = sorted(all_setups, key=lambda x: x['Accuracy'], reverse=True)[:3]
-
-# --- परिणामों को स्क्रीन पर प्रदर्शित करना ---
-if st.session_state["scan_results"]:
-    top_trades = st.session_state["scan_results"]

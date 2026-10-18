@@ -133,10 +133,10 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
-    # केवल टॉप 1 प्रायोरिटी स्टॉक को स्क्रीन पर दिखाना
+    # केवल टॉप 1 प्रायोरिटी स्टॉक को स्क्रीन पर दिखाना (फिक्स किया गया [0] इंडेक्स)
     top_trade = sorted_trades[0]
     
-    st.success("🔥 मार्केट रिपोर्ट्स और लाइव न्यूज़ एनालिसिस के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
+    st.success("🔥 Market Reports और लाइव न्यूज़ एनालिसिस के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
     
     st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
     

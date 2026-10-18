@@ -6,7 +6,7 @@ from google import genai
 # 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
 from nsepythonserver import nse_quote_ltp, nse_quote
 
-# 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और派 वाइड लेआउट)
+# 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
 st.set_page_config(page_title="AI Intraday Scalper v2", page_icon="⚡", layout="wide")
 
 st.title("⚡ AI Intraday Scalper & Sector Scanner (v2 - LIVE)")
@@ -67,14 +67,15 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
     if not api_key:
         return "AI न्यूज़ स्कैनर बंद है (Secrets में Key जांचें)"
     try:
+        # नए google-genai SDK का सही इनिशियलाइजेशन
         client = genai.Client(api_key=api_key)
         prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
                   f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
                   f"सटीक गाइडलाइन सिर्फ 1 या 2 छोटे वाक्यों में हिंदी में दो।")
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text.strip()
-    except:
-        return "एआई विश्लेषण वर्तमान में तकनीकी कारणों से उपलब्ध नहीं है।"
+    except Exception as e:
+        return f"एआई विश्लेषण वर्तमान में उपलब्ध नहीं है। एरर: {str(e)}"
 
 # --- लाइव डैशबोर्ड मुख्य भाग ---
 st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
@@ -105,19 +106,17 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             target = 0.0
             score = 0.0
             
-            # सुधार: टारगेट को 1.5% से बढ़ाकर 2.5% किया ताकि बड़ा मूवमेंट मिले
-            # सुधार: एंट्री प्राइस में 0.1% का बफर जोड़ा ताकि आपको ऑर्डर लगाने का समय मिले
             if last_price > open_price and price_change_pct > 0.4:
                 signal = "📈 BUY ABOVE (Long)"
-                entry_price = float(last_price + (last_price * 0.001))   # एंट्री बफर प्राइस
-                stop_loss = float(entry_price - (entry_price * 0.010))     # 1% स्टॉप लॉस
-                target = float(entry_price + (entry_price * 0.025))        # 2.5% बड़ा टारगेट
+                entry_price = float(last_price + (last_price * 0.001))   
+                stop_loss = float(entry_price - (entry_price * 0.010))     
+                target = float(entry_price + (entry_price * 0.025))        
                 score = float(price_change_pct * 1.5) 
             elif last_price < open_price and price_change_pct < -0.4:
                 signal = "📉 SELL BELOW (Short)"
-                entry_price = float(last_price - (last_price * 0.001))   # एंट्री बफर प्राइस
-                stop_loss = float(entry_price + (entry_price * 0.010))     # 1% स्टॉप लॉस
-                target = float(entry_price - (entry_price * 0.025))        # 2.5% बड़ा टारगेट
+                entry_price = float(last_price - (last_price * 0.001))   
+                stop_loss = float(entry_price + (entry_price * 0.010))     
+                target = float(entry_price - (entry_price * 0.025))        
                 score = float(abs(price_change_pct) * 1.5)
 
             if signal != "NO SIGNAL":
@@ -129,7 +128,7 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
                 all_intraday_trades.append({
                     "sector": sector, 
                     "name": name, 
-                    "price": round(entry_price, 2), # बफर प्राइस को मुख्य प्राइस माना
+                    "price": round(entry_price, 2), 
                     "current_price": round(last_price, 2),
                     "change": round(price_change_pct, 2), 
                     "signal": signal,
@@ -144,12 +143,12 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
+    # फिक्स: लिस्ट का पहला स्टॉक निकालने के लिए [0] जोड़ा गया
     top_trade = sorted_trades[0]
     
     st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
     st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
     
-    # वैल्यूज को सुरक्षित तरीके से निकालना और टाइप कास्ट करना
     try:
         price_val = float(top_trade.get('price', 0.0))
     except:

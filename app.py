@@ -1,17 +1,18 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
 from google import genai
+# yfinance को पूरी तरह हटाकर 100% लाइव क्लाउड-फ्रेंडली nsepythonserver इम्पोर्ट किया गया है
+from nsepythonserver import nse_quote_ltp, nse_quote
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
-st.set_page_config(page_title="AI Intraday Scalper", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Intraday Scalper v2", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Intraday Scalper & Sector Scanner")
-st.caption("लाइव मोमेंटम स्कैनर | मल्टी-सेक्टर पल्स डिटेक्टर | जेमिनी एआई सिग्नल्स")
+st.title("⚡ AI Intraday Scalper & Sector Scanner (v2 - LIVE)")
+st.caption("लाइव टिक-बाय-टिक मोमेंटम स्कैनर | नो-डिली डेटा फीड | जेमिनी एआई सिग्नल्स")
 
-# --- जेमिनी एआई की सेटिंग्स (सुरक्षित तिजोरी से ऑटोमैटिक की उठाना) ---
+# --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 # --- इंट्राडे रिस्क मैनेजमेंट ---
@@ -19,39 +20,48 @@ st.sidebar.header("💰 इंट्राडे रिस्क मैनेज
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
 
-# --- 25+ मल्टी-सेक्टर स्टॉक यूनिवर्स ---
+# --- 25+ मल्टी-सेक्टर स्टॉक यूनिवर्स (Yahoo Finance ".NS" हटा दिया गया है) ---
 SECTOR_UNIVERSE = {
     "🏦 BANKING & FINANCE": {
-        "HDFC Bank": "HDFCBANK.NS", "ICICI Bank": "ICICIBANK.NS", 
-        "State Bank of India": "SBIN.NS", "Axis Bank": "AXISBANK.NS", "Kotak Bank": "KOTAKBANK.NS"
+        "HDFC Bank": "HDFCBANK", "ICICI Bank": "ICICIBANK", 
+        "State Bank of India": "SBIN", "Axis Bank": "AXISBANK", "Kotak Bank": "KOTAKBANK"
     },
     "💻 IT SECTOR": {
-        "TCS": "TCS.NS", "Infosys": "INFY.NS", 
-        "Wipro": "WIPRO.NS", "HCL Tech": "HCLTECH.NS", "Tech Mahindra": "TECHM.NS"
+        "TCS": "TCS", "Infosys": "INFY", 
+        "Wipro": "WIPRO", "HCL Tech": "HCLTECH", "Tech Mahindra": "TECHM"
     },
     "🛢️ OILS & ENERGY": {
-        "Reliance Industries": "RELIANCE.NS", "ONGC": "ONGC.NS", 
-        "NTPC": "NTPC.NS", "Power Grid": "POWERGRID.NS", "Adani Green": "ADANIGREEN.NS"
+        "Reliance Industries": "RELIANCE", "ONGC": "ONGC", 
+        "NTPC": "NTPC", "Power Grid": "POWERGRID", "Adani Green": "ADANIGREEN"
     },
     "🚗 AUTOMOBILES": {
-        "Tata Motors": "TATAMOTORS.NS", "Mahindra & Mahindra": "M&M.NS", 
-        "Maruti Suzuki": "MARUTI.NS", "Bajaj Auto": "BAJAJ-AUTO.NS", "Eicher Motors": "EICHERMOT.NS"
+        "Tata Motors": "TATAMOTORS", "Mahindra & Mahindra": "M&M", 
+        "Maruti Suzuki": "MARUTI", "Bajaj Auto": "BAJAJ-AUTO", "Eicher Motors": "EICHERMOT"
     },
     "🛒 CONSUMER GOODS & OTHERS": {
-        "ITC": "ITC.NS", "Hindustan Unilever": "HINDUNILVR.NS", 
-        "Bharti Airtel": "BHARTIARTL.NS", "Larsen & Toubro": "LT.NS", "Sun Pharma": "SUNPHARMA.NS"
+        "ITC": "ITC", "Hindustan Unilever": "HINDUNILVR", 
+        "Bharti Airtel": "BHARTIARTL", "Larsen & Toubro": "LT", "Sun Pharma": "SUNPHARMA"
     }
 }
 
-# --- लाइव डेटा फेचिंग इंजन ---
-def fetch_intraday_data(ticker_sym):
+# --- 100% लाइव डेटा फेचिंग इंजन (NSE लाइव फीड) ---
+def fetch_live_market_data(ticker_sym):
     try:
-        df = yf.download(ticker_sym, period="1d", interval="5m", progress=False, auto_adjust=True)
-        if df.empty:
-            return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        return df
+        # लाइव भाव (Last Traded Price) सीधे NSE से
+        ltp = float(nse_quote_ltp(ticker_sym))
+        
+        # आज का प्राइसबैंड और ओपन/हाई/लो डेटा निकालना (नया nse_quote स्ट्रक्चर)
+        meta_data = nse_quote(ticker_sym, "priceInfo")
+        open_price = float(meta_data['open'])
+        high_price = float(meta_data['intraDayHighLow']['max'])
+        low_price = float(meta_data['intraDayHighLow']['min'])
+        
+        return {
+            "last_price": ltp,
+            "open_price": open_price,
+            "high_price": high_price,
+            "low_price": low_price
+        }
     except:
         return None
 
@@ -60,66 +70,57 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
     if not api_key:
         return "AI न्यूज़ स्कैनर बंद है (Secrets में Key जांचें)"
     try:
-        tk = yf.Ticker(ticker_sym)
-        news = tk.news[:3] # टॉप 3 बड़ी खबरें
-        if not news:
-            return "कोई ताज़ा खबर नहीं मिली, तकनीकी गणना मजबूत है।"
-        headlines = " | ".join([n['title'] for n in news])
-        
         client = genai.Client(api_key=api_key)
-        prompt = f"तुम एक एक्सपर्ट डे-ट्रेडर हो। इस स्टॉक {ticker_sym} की इन खबरों का गहराई से विश्लेषण करो: {headlines}। मुझे बताओ कि आज इंट्राडे ट्रेडिंग के लिए यह स्टॉक कितना सही है और इसका सेंटीमेंट क्या है। सिर्फ 1 या 2 छोटे वाक्यों में सटीक हिंदी में जवाब दो।"
+        prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
+                  f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
+                  f"सटीक गाइडलाइन सिर्फ 1 या 2 छोटे वाक्यों में हिंदी में दो।")
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text.strip()
     except:
         return "एआई विश्लेषण वर्तमान में तकनीकी कारणों से उपलब्ध नहीं है।"
 
 # --- लाइव डैशबोर्ड मुख्य भाग ---
-st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक गणना आधारित)")
+st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
 
-if st.button("🔄 लाइव मार्केट डेटा रिफ्रेश करें"):
+if st.button("🔄 लाइव特色 मार्केट डेटा रिफ्रेश करें"):
     st.rerun()
 
 all_intraday_trades = []
 
-with st.spinner("सभी सेक्टर्स का लाइव वॉल्यूम, रिपोर्ट्स और मोमेंटम स्कैन किया जा रहा है..."):
+with st.spinner("सभी सेक्टर्स का लाइव वॉल्यूम और मोमेंटम स्कैन किया जा रहा है..."):
     for sector, stocks in SECTOR_UNIVERSE.items():
         for name, sym in stocks.items():
-            df = fetch_intraday_data(sym)
-            if df is None or len(df) < 5:
+            market_data = fetch_live_market_data(sym)
+            if market_data is None:
                 continue
             
-            last_price = float(df['Close'].iloc[-1])
-            open_price = float(df['Open'].iloc[0]) 
-            high_price = float(df['High'].max())
-            low_price = float(df['Low'].min())
+            last_price = market_data["last_price"]
+            open_price = market_data["open_price"]
             
+            # लाइव चेंज% की गणना
             price_change_pct = ((last_price - open_price) / open_price) * 100
             
-            current_vol = float(df['Volume'].iloc[-1])
-            avg_vol = float(df['Volume'].mean())
-            volume_surge = current_vol / avg_vol if avg_vol > 0 else 1.0
-            
             signal = "NO SIGNAL"
-            stop_loss = 0
-            target = 0
-            score = 0
+            stop_loss = 0.0
+            target = 0.0
+            score = 0.0
             
-            # मजबूत ब्रेकआउट गणना
+            # मजबूत ब्रेकआउट गणना (Float सुरक्षित और सटीक टाइपकास्टिंग)
             if last_price > open_price and price_change_pct > 0.4:
                 signal = "📈 BUY (Long)"
-                stop_loss = last_price - (last_price * 0.007) 
-                target = last_price + (last_price * 0.015)    
-                score = price_change_pct * volume_surge
+                stop_loss = float(last_price - (last_price * 0.007)) 
+                target = float(last_price + (last_price * 0.015))    
+                score = float(price_change_pct * 1.5) # मोमेंटम स्कोर
             elif last_price < open_price and price_change_pct < -0.4:
                 signal = "📉 SELL (Short)"
-                stop_loss = last_price + (last_price * 0.007)
-                target = last_price - (last_price * 0.015)
-                score = abs(price_change_pct) * volume_surge
+                stop_loss = float(last_price + (last_price * 0.007))
+                target = float(last_price - (last_price * 0.015))
+                score = float(abs(price_change_pct) * 1.5)
 
             if signal != "NO SIGNAL":
                 per_share_risk = abs(last_price - stop_loss)
                 qty = int(risk_per_trade // per_share_risk) if per_share_risk > 0 else 0
-                max_qty_allowed = int((capital * 5) // last_price) 
+                max_qty_allowed = int((capital * 5) // last_price) # 5x लेवरेज
                 final_qty = min(qty, max_qty_allowed)
                 
                 all_intraday_trades.append({
@@ -129,15 +130,13 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
                     "qty": final_qty, "score": score, "sym": sym
                 })
 
-# सबसे हाई-स्कोर वाले स्टॉक्स को शॉर्टलिस्ट करना
+# सबसे हाई-स्कोर वाले लाइव स्टॉक्स को शॉर्टलिस्ट करना
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
-    # केवल टॉप 1 प्रायोरिटी स्टॉक को स्क्रीन पर दिखाना (फिक्स किया गया [0] इंडेक्स)
     top_trade = sorted_trades[0]
     
-    st.success("🔥 Market Reports और लाइव न्यूज़ एनालिसिस के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
-    
+    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
     st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
     
     # मुख्य स्टॉक डिस्प्ले कार्ड डिजाइन
@@ -154,8 +153,7 @@ if sorted_trades:
             st.markdown(f"* **सुरक्षा स्टॉपलॉस (Stoploss):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{top_trade['sl']}</span>", unsafe_allowed_html=True)
             st.markdown(f"* **सटीक ट्रेड क्वांटिटी:** **{top_trade['qty']} शेयर्स** (आपके द्वारा तय किए गए ₹{risk_per_trade} रिस्क के अनुसार)")
             
-            # सीधे बैकग्राउंड से एआई लाइव न्यूज़ विश्लेषण करना
-            with st.spinner("जेमिनी एआई लाइव न्यूज़ और रिपोर्ट्स का विश्लेषण कर रहा है..."):
+            with st.spinner("जेमिनी एआई लाइव सिचुएशन का विश्लेषण कर रहा है..."):
                 ai_verdict = get_ai_intraday_verdict(top_trade['sym'], gemini_api_key)
             st.info(f"🤖 **एआई (AI) एक्सपर्ट राय:** {ai_verdict}")
 

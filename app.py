@@ -115,7 +115,7 @@ with st.spinner("वैश्विक और घरेलू सूचकां
 c1, c2, c3 = st.columns(3)
 
 # Nifty 50 विज़ुअल फिक्स
-nifty_label = "सतर्क रहें" if m_vectors["NIFTY"] == "DOWNTREND" else "अनुकूल"
+nifty_label = "सतर्क रहें (मंदी)" if m_vectors["NIFTY"] == "DOWNTREND" else "अनुकूल (तेजी)"
 nifty_delta = f"↓ {nifty_label}" if m_vectors["NIFTY"] == "DOWNTREND" else f"↑ {nifty_label}"
 c1.metric(
     label="Nifty 50 मुख्य दिशा", 
@@ -125,7 +125,7 @@ c1.metric(
 )
 
 # Bank Nifty विज़ुअल फिक्स
-bank_label = "दबाव में" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "बैंकिंग सपोर्ट"
+bank_label = "दबाव में (मंदी)" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "बैंकिंग सपोर्ट"
 bank_delta = f"↓ {bank_label}" if m_vectors["BANKNIFTY"] == "DOWNTREND" else f"↑ {bank_label}"
 c2.metric(
     label="Bank Nifty गति", 
@@ -134,7 +134,7 @@ c2.metric(
     delta_color="inverse" if m_vectors["BANKNIFTY"] == "DOWNTREND" else "normal"
 )
 
-c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका अल्फा (Alpha) और वॉल्यूम बेहद असाधारण हो।")
+c3.info("💡 **सटीकता नियम:** जब बाजार (Nifty) विपरीत हो, तब सिस्टम केवल उन्हीं चुनिंदा शेयरों को शॉर्टलिस्ट करता है जिनका alpha (Alpha) और वॉल्यूम बेहद असाधारण हो।")
 
 # सेसशन स्टेट रिफ्रेश प्रोटेक्शन (Streamlit Cash Retention Lock)
 if "scan_results" not in st.session_state:
@@ -220,8 +220,6 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
             qty = min(qty, int(capital // last_price))
             
-            # ब्रैकेट एरर से बचने के लिए वेरिएबल डिक्शनरी एप्रोच (Syntax Error Guard)
-            trade_data = {
-                "Company": name, 
-                "Ticker": ticker, 
-                "Direction": direction,
+            # सिंटैक्स एरर को हमेशा के लिए खत्म करने हेतु शुद्ध टुपल (Tuple Matrix) एप्रोच
+            t_data = (
+                name, ticker, direction, round(accuracy_score, 1),

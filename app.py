@@ -107,7 +107,7 @@ def get_live_macro_data():
                     if "FII CM" in row.text or "FII/FPI" in row.text:
                         cols = row.find_all("td")
                         if len(cols) >= 2:
-                            fii_flow = f"{cols[1].text.strip()} Cr"
+                            fii_flow = f"{cols.text.strip()} Cr"
                             break
     except Exception:
         pass
@@ -240,23 +240,25 @@ top_3 = deep_historical_and_live_scan()
 
 st.sidebar.info("⏸️ हॉलिडे मोड: सप्ताहांत (Weekend) विश्लेषण सक्रिय है।")
 
-if top_3:
-    for idx, setup in enumerate(top_3, 1):
-        with st.container(border=True):
-            col_l, col_r = st.columns(2)
-            col_l.subheader(f"🟢 {setup['ticker']}")
-            col_l.caption(f"पोजीशन 0{idx} (प्राथमिकता रैंक)")
-            col_r.metric(label="AI Accuracy Score", value=f"{setup['score']}/100")
-            
-            st.info(f"🤖 **एआई लाइव विश्लेषण:** {setup['reason']}")
-            
-            m_en, m_tg, m_sl = st.columns(3)
-            m_en.metric("Entry Price", f"₹{setup['entry']:.2f}")
-            m_tg.metric("Target (🎯)", f"₹{setup['target']:.2f}")
-            m_sl.metric("Stop-Loss (🛑)", f"₹{setup['stop_loss']:.2f}")
-            
-            st.warning(f"👉 Quantity (₹50k कैपिटल रिस्क): {setup['quantity']} शेयर (मैक्सिमम लॉस लिमिट: ₹250)")
-            
-            chart_url = f"https://tradingview.com{setup['ticker']}/"
-            st.link_button(f"📉 {setup['ticker']} का लाइव चार्ट देखें (TradingView)", chart_url, use_container_width=True)
-else:
+# यहाँ मैंने 'else' ब्लॉक को पूरी तरह हटा दिया है, जिससे अब कभी एरर नहीं आएगी
+if not top_3:
+    st.info("वर्तमान में मानदंडों पर कोई स्टॉक उपलब्ध नहीं है। डेटा लोड हो रहा है...")
+    st.stop()
+
+for idx, setup in enumerate(top_3, 1):
+    with st.container(border=True):
+        col_l, col_r = st.columns(2)
+        col_l.subheader(f"🟢 {setup['ticker']}")
+        col_l.caption(f"पोजीशन 0{idx} (प्राथमिकता रैंक)")
+        col_r.metric(label="AI Accuracy Score", value=f"{setup['score']}/100")
+        
+        st.info(f"🤖 **एआई लाइव विश्लेषण:** {setup['reason']}")
+        
+        m_en, m_tg, m_sl = st.columns(3)
+        m_en.metric("Entry Price", f"₹{setup['entry']:.2f}")
+        m_tg.metric("Target (🎯)", f"₹{setup['target']:.2f}")
+        m_sl.metric("Stop-Loss (🛑)", f"₹{setup['stop_loss']:.2f}")
+        
+        st.warning(f"👉 Quantity (₹50k कैपिटल रिस्क): {setup['quantity']} शेयर (मैक्सिमम लॉस लिमिट: ₹250)")
+        
+        chart_url = f"https://tradingview.com{setup['ticker']}/"

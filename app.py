@@ -39,7 +39,7 @@ SECTOR_UNIVERSE = {
     },
     "🛒 CONSUMER GOODS & OTHERS": {
         "ITC": "ITC.NS", "Hindustan Unilever": "HINDUNILVR.NS", 
-        "Bharti Airtel": "BHARTIARTL.NS", "Larsen & Loubro": "LT.NS", "Sun Pharma": "SUNPHARMA.NS"
+        "Bharti Airtel": "BHARTIARTL.NS", "Larsen & Toubro": "LT.NS", "Sun Pharma": "SUNPHARMA.NS"
     }
 }
 
@@ -76,7 +76,7 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
 # --- लाइव डैशबोर्ड मुख्य भाग ---
 st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक गणना आधारित)")
 
-if st.button("🔄 लाइव连接 मार्केट डेटा रिफ्रेश करें"):
+if st.button("🔄 लाइव मार्केट डेटा रिफ्रेश करें"):
     st.rerun()
 
 all_intraday_trades = []
@@ -133,7 +133,7 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
 sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
 if sorted_trades:
-    # केवल टॉप 1 प्रायोरिटी स्टॉक को स्क्रीन पर दिखाना (फिक्स किया गया [0])
+    # केवल टॉप 1 प्रायोरिटी स्टॉक को स्क्रीन पर दिखाना
     top_trade = sorted_trades[0]
     
     st.success("🔥 मार्केट रिपोर्ट्स और लाइव न्यूज़ एनालिसिस के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
@@ -142,7 +142,7 @@ if sorted_trades:
     
     # मुख्य स्टॉक डिस्प्ले कार्ड डिजाइन
     with st.container(border=True):
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 2])
         with col1:
             st.metric(label=f"{top_trade['name']}", value=f"₹{top_trade['price']}", delta=f"{top_trade['change']}%")
             st.markdown(f"**📍 सेक्टर:** {top_trade['sector']}")

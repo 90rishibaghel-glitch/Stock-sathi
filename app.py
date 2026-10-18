@@ -178,13 +178,16 @@ if sorted_trades:
         
         with col2:
             st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स और सही गणना:")
-            st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{target_val:.2f}</span>", unsafe_allowed_html=True)
-            st.markdown(f"* **सुरक्षा स्टॉपलॉस (Stoploss):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{sl_val:.2f}</span>", unsafe_allowed_html=True)
-            st.markdown(f"* **सटीक ट्रेड क्वांटिटी:** **{qty_val} शेयर्स** (आपके द्वारा तय किए गए ₹{risk_per_trade} रिस्क के अनुसार)")
+            # यहाँ सही पैरामीटर 'unsafe_allow_html=True' लागू कर दिया गया है
+            st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{target_val:.2f}</span>", unsafe_allow_html=True)
+            st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{sl_val:.2f}</span>", unsafe_allow_html=True)
+            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{qty_val} Shares</span>", unsafe_allow_html=True)
             
-            with st.spinner("जेमिनी एआई लाइव सिचुएशन का विश्लेषण कर रहा है..."):
-                ai_verdict = get_ai_intraday_verdict(top_trade.get('sym', ''), gemini_api_key)
-            st.info(f"🤖 **एआई (AI) एक्सपर्ट राय:** {ai_verdict}")
-
+    # --- जेमिनी एआई का लाइव ओपिनियन रेंडरिंग ---
+    st.markdown("### 🤖 जेमिनी एआई लाइव सिग्नल्स और वर्डिक्ट")
+    with st.spinner("जेमिनी एआई लाइव चार्ट स्ट्रक्चर और सेंटीमेंट का विश्लेषण कर रहा है..."):
+        ai_verdict = get_ai_intraday_verdict(top_trade.get('sym', ''), gemini_api_key)
+        st.info(f"💡 **एआई गाइडलाइन:** {ai_verdict}")
+        
 else:
-    st.info("💡 अभी मार्केट में किसी भी बड़े स्टॉक में कोई मजबूत ब्रेकआउट या विश्वसनीय सिग्नल नहीं बना है। लाइव मार्केट (9:15 AM - 3:30 PM) के दौरान 'लाइव मार्केट डेटा रिफ्रेश करें' बटन दबाएं।")
+    st.warning("⚠️ फ़िलहाल किसी भी स्टॉक में निर्धारित इंट्राडे मोमेंटम (0.4% से ज़्यादा का उतार-चढ़ाव) नहीं मिला है। लाइव मार्केट खुलने पर दोबारा रिफ्रेश करें।")

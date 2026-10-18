@@ -20,7 +20,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state["authenticated"]:
     with st.sidebar:
-        st.subheader("🔒 सुरक्षा एक्सेस")
+        st.subheader("🔒 security access")
         user_password = st.text_input("मास्टर पासवर्ड दर्ज करें:", type="password", key="login_pass")
         if st.button("अनलॉक करें") or (user_password == MASTER_PASSWORD and user_password):
             if user_password == MASTER_PASSWORD:
@@ -220,6 +220,8 @@ if st.button("🔎 पूरे बाजार का महा-स्कैन
             qty = int(max_risk_inr // risk_per_share) if risk_per_share > 0 else 0
             qty = min(qty, int(capital // last_price))
             
-            all_setups.append({
-                "Company": name, "Ticker": ticker, "Direction": direction,
-                "Accuracy": round(accuracy_score, 1), "Live Price": round(last_price, 2),
+            # ब्रैकेट एरर से बचने के लिए वेरिएबल डिक्शनरी एप्रोच (Syntax Error Guard)
+            trade_data = {
+                "Company": name, 
+                "Ticker": ticker, 
+                "Direction": direction,

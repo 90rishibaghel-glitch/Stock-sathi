@@ -142,7 +142,7 @@ if sorted_trades:
     
     # मुख्य स्टॉक डिस्प्ले कार्ड डिजाइन
     with st.container(border=True):
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns(2)
         with col1:
             st.metric(label=f"{top_trade['name']}", value=f"₹{top_trade['price']}", delta=f"{top_trade['change']}%")
             st.markdown(f"**📍 सेक्टर:** {top_trade['sector']}")

@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 import pytz
 from google import genai
-import holidays  # 100% ऑटोमैटिक एनएससी हॉलिडे लाइब्रेरी
+import holidays  
 from nsepythonserver import nse_quote_ltp, nse_quote
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
@@ -27,8 +27,14 @@ st.sidebar.markdown(f"**🕒 लाइव भारतीय समय (IST):** 
 
 market_status = "NORMAL"
 
-# स्टेप A: ऑटोमैटिक एनएससी हॉलिडे चेक (हर साल के त्योहारों को खुद पहचानेगा)
-nse_official_holidays = holidays.FinancialHolidays(market="NSE")
+# स्टेप A: सुरक्षित ऑटोमैटिक हॉलिडे चेक (एरर-फ्री)
+try:
+    nse_official_holidays = holidays.financial.NSE()
+except AttributeError:
+    try:
+        nse_official_holidays = holidays.country_holidays('IN')
+    except:
+        nse_official_holidays = {}
 
 if now_datetime.date() in nse_official_holidays:
     st.sidebar.error("🛑 आज मार्केट बंद है (एनएससी राष्ट्रीय अवकाश/हॉलिडे)! एआई ब्लॉक किया गया है।")
@@ -60,7 +66,7 @@ if market_status != "CLOSED":
     elif "09:15" <= current_hour_min <= "09:45":
         st.sidebar.info("🚀 ओपनिंग वोलैटिलिटी विंडो! शुरुआती 15 मिनट सिर्फ Market Direction देखें।")
 
-# --- इंट्राडे रिस्क मैनेजमेंट (Rule #4: Risk Management) ---
+# --- इंट्राडे रिस्क मैनेजमेंट ---
 st.sidebar.header("💰 इंट्राडे रिस्क मैनेजमेंट")
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
@@ -89,7 +95,7 @@ SECTOR_UNIVERSE = {
     }
 }
 
-# --- 100% लाइव डेटा फेचिंग इंजन (NSE लाइव फीड) ---
+# --- 100% लाइव डेटा फेचिंग इंजन ---
 def fetch_live_market_data(ticker_sym):
     try:
         ltp = float(nse_quote_ltp(ticker_sym))
@@ -98,7 +104,6 @@ def fetch_live_market_data(ticker_sym):
         high_price = float(meta_data['intraDayHighLow']['max'])
         low_price = float(meta_data['intraDayHighLow']['min'])
         
-        # --- VWAP का प्रॉक्सी कैलकुलेशन (Price Action के लिए) ---
         vwap_proxy = float((high_price + low_price + ltp) / 3.0)
         
         return {
@@ -120,7 +125,7 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
         prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
                   f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
                   f"सटीक गाइडलाइन सिर्फ 1 या 2 छोटे वाक्यों में हिंदी में दो।")
-        response = client.models.generate_content(model='gemini-3.8-flash', contents=prompt)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text.strip()
     except Exception as e:
         return f"एआई विश्लेषण वर्तमान में उपलब्ध नहीं है। एरर: {str(e)}"
@@ -128,7 +133,6 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
 # --- लाइव डैशबोर्ड मुख्य भाग ---
 st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
 
-# मार्केट बंद होने या स्लम्प की वार्निंग
 if market_status == "CLOSED":
     st.error("🛑 **अलर्ट:** आज मार्केट बंद है। लाइव डेटा और ट्रेड स्कैनिंग उपलब्ध नहीं है।")
 elif market_status == "SLUMP":
@@ -139,7 +143,6 @@ if st.button("🔄 लाइव मार्केट डेटा रिफ्�
 
 all_intraday_trades = []
 
-# यदि मार्केट बंद नहीं है तभी स्कैनिंग करें
 if market_status != "CLOSED":
     with st.spinner("सभी सेक्टर्स का लाइव वॉल्यूम और मोमेंटम स्कैन किया जा रहा है..."):
         for sector, stocks in SECTOR_UNIVERSE.items():
@@ -165,7 +168,6 @@ if market_status != "CLOSED":
                 target = 0.0
                 score = 0.0
                 
-                # --- Price Action Filter (LTP > Open & LTP > VWAP) ---
                 if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
                     signal = "📈 BUY ABOVE (Long)"
                     entry_price = float(last_price + (last_price * 0.001))   
@@ -176,7 +178,6 @@ if market_status != "CLOSED":
                     else:
                         stop_loss = float(potential_sl)
                     
-                    # 1:2 का रिस्क-टू-रिवॉर्ड रेशियो
                     risk_per_share = entry_price - stop_loss
                     target = float(entry_price + (risk_per_share * 2.0))
                     score = float(price_change_pct * 1.5) 
@@ -191,7 +192,6 @@ if market_status != "CLOSED":
                     else:
                         stop_loss = float(potential_sl)
                     
-                    # 1:2 का रिस्क-टू-रिवॉर्ड रेशियो
                     risk_per_share = stop_loss - entry_price
                     target = float(entry_price - (risk_per_share * 2.0))
                     score = float(abs(price_change_pct) * 1.5)
@@ -199,7 +199,7 @@ if market_status != "CLOSED":
                 if signal != "NO SIGNAL":
                     per_share_risk = abs(entry_price - stop_loss)
                     qty = int(risk_per_trade // per_share_risk) if per_share_risk > 0 else 0
-                    max_qty_allowed = int((capital * 5) // entry_price) # 5x Leverage
+                    max_qty_allowed = int((capital * 5) // entry_price)
                     final_qty = min(qty, max_qty_allowed)
                     
                     all_intraday_trades.append({
@@ -216,7 +216,6 @@ if market_status != "CLOSED":
                         "sym": sym
                     })
 
-    # सॉर्टिंग करना
     sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
     if sorted_trades:
@@ -239,7 +238,6 @@ if market_status != "CLOSED":
                 st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{top_trade.get('target', 0.0):.2f}</span>", unsafe_allow_html=True)
                 st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{top_trade.get('sl', 0.0):.2f} (Price Action आधारित)</span>", unsafe_allow_html=True)
 
-        # --- जेमिनी एआई का लाइव ओपिनियन रेंडरिंग (बटन के साथ ताकि 429 एरर न आए) ---
         st.markdown("### 🤖 जेमिनी एआई लाइव सिग्नल्स और वर्डिक्ट")
         
         if st.button("🤖 जेमिनी एआई से लाइव विश्लेषण पूछें (कोटा बचाने के लिए क्लिक करें)"):

@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+from datetime import datetime
+import pytz
 from google import genai
 # 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
 from nsepythonserver import nse_quote_ltp, nse_quote
@@ -15,7 +17,24 @@ st.caption("लाइव टिक-बाय-टिक मोमेंटम स
 # --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- इंट्राडे रिस्क मैनेजमेंट ---
+# --- 1. टाइम मैनेजमेंट फ़िल्टर (Rule #1: Market Timings) ---
+IST = pytz.timezone('Asia/Kolkata')
+current_time = datetime.now(IST).time()
+current_hour_min = current_time.strftime("%H:%M")
+
+st.sidebar.markdown(f"**🕒 लाइव भारतीय समय (IST):** `{current_hour_min}`")
+
+market_status = "NORMAL"
+if "11:30" <= current_hour_min <= "13:30":
+    st.sidebar.error("💤 मिड-डे स्लम्प (Sideways Market)! नए ट्रेड लेने से सख्त परहेज करें। (Volume कम है)")
+    market_status = "SLUMP"
+elif current_hour_min >= "15:10":
+    st.sidebar.warning("⚠️ ऑटो स्क्वायर-ऑफ समय! ब्रोकर की पेनल्टी से बचने के लिए तुरंत पोजीशन क्लोज करें।")
+    market_status = "CLOSING"
+elif "09:15" <= current_hour_min <= "09:45":
+    st.sidebar.info("🚀 ओपनिंग वोलैटिलिटी विंडो! शुरुआती 15 मिनट सिर्फ Market Direction देखें।")
+
+# --- इंट्राडे रिस्क मैनेजमेंट (Rule #4: Risk Management) ---
 st.sidebar.header("💰 इंट्राडे रिस्क मैनेजमेंट")
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
@@ -53,11 +72,15 @@ def fetch_live_market_data(ticker_sym):
         high_price = float(meta_data['intraDayHighLow']['max'])
         low_price = float(meta_data['intraDayHighLow']['min'])
         
+        # --- VWAP का प्रॉक्सी कैलकुलेशन (Price Action के लिए) ---
+        vwap_proxy = float((high_price + low_price + ltp) / 3.0)
+        
         return {
             "last_price": ltp,
             "open_price": open_price,
             "high_price": high_price,
-            "low_price": low_price
+            "low_price": low_price,
+            "vwap": vwap_proxy
         }
     except:
         return None
@@ -67,7 +90,6 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
     if not api_key:
         return "AI न्यूज़ स्कैनर बंद है (Secrets में Key जांचें)"
     try:
-        # नए google-genai SDK का सही इनिशियलाइजेशन
         client = genai.Client(api_key=api_key)
         prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज लाइव मार्केट में ब्रेकआउट दे रहा है। "
                   f"इस स्टॉक के टेक्निकल स्ट्रक्चर को ध्यान में रखते हुए इंट्राडे ट्रेडिंग के लिए "
@@ -79,6 +101,10 @@ def get_ai_intraday_verdict(ticker_sym, api_key):
 
 # --- लाइव डैशबोर्ड मुख्य भाग ---
 st.subheader("📊 रीयल-टाइम इंट्राडे सेलेक्टर (100% सटीक लाइव डेटा आधारित)")
+
+# मिड-डे स्लम्प की बड़ी स्क्रीन वार्निंग
+if market_status == "SLUMP":
+    st.warning("⚠️ **अलर्ट:** अभी मिड-डे टाइम (11:30 AM - 01:30 PM) चल रहा है। मार्केट अक्सर इस वक्त Sideways रहता है। ट्रेड लेने से पहले वॉल्यूम ज़रूर check कर लें।")
 
 if st.button("🔄 लाइव मार्केट डेटा रिफ्रेश करें"):
     st.rerun()
@@ -94,6 +120,9 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             
             last_price = float(market_data["last_price"])
             open_price = float(market_data["open_price"])
+            high_price = float(market_data["high_price"])
+            low_price = float(market_data["low_price"])
+            vwap = float(market_data["vwap"])
             
             if open_price == 0:
                 continue
@@ -106,23 +135,41 @@ with st.spinner("सभी सेक्टर्स का लाइव वॉ�
             target = 0.0
             score = 0.0
             
-            if last_price > open_price and price_change_pct > 0.4:
+            # --- Price Action Filter (LTP > Open & LTP > VWAP) ---
+            if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
                 signal = "📈 BUY ABOVE (Long)"
                 entry_price = float(last_price + (last_price * 0.001))   
-                stop_loss = float(entry_price - (entry_price * 0.010))     
-                target = float(entry_price + (entry_price * 0.025))        
+                
+                potential_sl = low_price
+                if entry_price - potential_sl > (entry_price * 0.007):
+                    stop_loss = float(entry_price - (entry_price * 0.007))
+                else:
+                    stop_loss = float(potential_sl)
+                
+                # 1:2 का रिस्क-टू-रिवॉर्ड रेशियो
+                risk_per_share = entry_price - stop_loss
+                target = float(entry_price + (risk_per_share * 2.0))
                 score = float(price_change_pct * 1.5) 
-            elif last_price < open_price and price_change_pct < -0.4:
+                
+            elif last_price < open_price and price_change_pct < -0.4 and last_price < vwap:
                 signal = "📉 SELL BELOW (Short)"
                 entry_price = float(last_price - (last_price * 0.001))   
-                stop_loss = float(entry_price + (entry_price * 0.010))     
-                target = float(entry_price - (entry_price * 0.025))        
+                
+                potential_sl = high_price
+                if potential_sl - entry_price > (entry_price * 0.007):
+                    stop_loss = float(entry_price + (entry_price * 0.007))
+                else:
+                    stop_loss = float(potential_sl)
+                
+                # 1:2 का रिस्क-टू-रिवॉर्ड रेशियो
+                risk_per_share = stop_loss - entry_price
+                target = float(entry_price - (risk_per_share * 2.0))
                 score = float(abs(price_change_pct) * 1.5)
 
             if signal != "NO SIGNAL":
                 per_share_risk = abs(entry_price - stop_loss)
                 qty = int(risk_per_trade // per_share_risk) if per_share_risk > 0 else 0
-                max_qty_allowed = int((capital * 5) // entry_price)
+                max_qty_allowed = int((capital * 5) // entry_price) # 5x Leverage
                 final_qty = min(qty, max_qty_allowed)
                 
                 all_intraday_trades.append({
@@ -145,53 +192,23 @@ sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=Tr
 if sorted_trades:
     top_trade = sorted_trades[0]
     
-    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का टॉप प्रायोरिटी स्टॉक मिल गया है!")
+    st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का TOP प्रायोरिटी स्टॉक मिल गया है!")
     st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
     
-    try:
-        price_val = float(top_trade.get('price', 0.0))
-    except:
-        price_val = 0.0
-
-    try:
-        ltp_val = float(top_trade.get('current_price', 0.0))
-    except:
-        ltp_val = 0.0
-
-    try:
-        change_val = float(top_trade.get('change', 0.0))
-    except:
-        change_val = 0.0
-
-    try:
-        target_val = float(top_trade.get('target', 0.0))
-    except:
-        target_val = 0.0
-
-    try:
-        sl_val = float(top_trade.get('sl', 0.0))
-    except:
-        sl_val = 0.0
-
-    try:
-        qty_val = int(top_trade.get('qty', 0))
-    except:
-        qty_val = 0
-
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
-            st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{ltp_val}", delta=f"{change_val}%")
+            st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{top_trade.get('current_price', 0.0)}", delta=f"{top_trade.get('change', 0.0)}%")
             st.markdown(f"**📍 सेक्टर:** {top_trade.get('sector', 'N/A')}")
             st.markdown(f"**⚡ एक्शन सिग्नल:** `{top_trade.get('signal', 'NO SIGNAL')}`")
         
         with col2:
-            st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स और सही गणना:")
-            st.markdown(f"* **प्रवेश मूल्य (Entry Price):** <span style='color:#3498db; font-size:20px; font-weight:bold;'>₹{price_val:.2f} पर ऑर्डर लगाएँ</span>", unsafe_allow_html=True)
-            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{qty_val} Shares</span>", unsafe_allow_html=True)
-            st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{target_val:.2f}</span>", unsafe_allow_html=True)
-            st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{sl_val:.2f}</span>", unsafe_allow_html=True)
-            
+            st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स (सख्त 1:2 रिस्क-रिवॉर्ड आधारित):")
+            st.markdown(f"* **प्रवेश मूल्य (Entry Price):** <span style='color:#3498db; font-size:20px; font-weight:bold;'>₹{top_trade.get('price', 0.0):.2f} पर ऑर्डर लगाएँ (MIS + Limit Order)</span>", unsafe_allow_html=True)
+            st.markdown(f"* **ट्रेडिंग मात्रा (Quantity):** <span style='color:#f1c40f; font-size:20px; font-weight:bold;'>{top_trade.get('qty', 0)} Shares</span> (रिस्क मैनेज्ड)", unsafe_allow_html=True)
+            st.markdown(f"* **लक्ष्य (Target Price):** <span style='color:#2ecc71; font-size:20px; font-weight:bold;'>₹{top_trade.get('target', 0.0):.2f}</span>", unsafe_allow_html=True)
+            st.markdown(f"* **स्टॉप लॉस (Stop Loss):** <span style='color:#e74c3c; font-size:20px; font-weight:bold;'>₹{top_trade.get('sl', 0.0):.2f} (Price Action आधारित)</span>", unsafe_allow_html=True)
+
     # --- जेमिनी एआई का लाइव ओपिनियन रेंडरिंग ---
     st.markdown("### 🤖 जेमिनी एआई लाइव सिग्नल्स और वर्डिक्ट")
     with st.spinner("जेमिनी एआई लाइव चार्ट स्ट्रक्चर और सेंटीमेंट का विश्लेषण कर रहा है..."):
@@ -200,4 +217,3 @@ if sorted_trades:
         
 else:
     st.warning("⚠️ फ़िलहाल किसी भी स्टॉक में निर्धारित इंट्राडे मोमेंटम (0.4% से ज़्यादा का उतार-चढ़ाव) नहीं मिला है। लाइव मार्केट खुलने पर दोबारा रिफ्रेश करें।")
-                

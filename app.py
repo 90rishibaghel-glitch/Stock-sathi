@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 import pytz
 from google import genai
-# 100% लाइव क्लाउड-फ्रेंडली nsepythonserver का इम्पोर्ट
+import holidays  # 100% ऑटोमैटिक एनएससी हॉलिडे लाइब्रेरी
 from nsepythonserver import nse_quote_ltp, nse_quote
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
@@ -17,40 +17,36 @@ st.caption("लाइव टिक-बाय-टिक मोमेंटम स
 # --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. टाइम मैनेजमेंट और मास्टर लाइव चेक ---
+# --- 1. टाइम मैनेजमेंट और ऑटोमैटिक लाइव/हॉलिडे चेक ---
 IST = pytz.timezone('Asia/Kolkata')
 now_datetime = datetime.now(IST)
 current_time = now_datetime.time()
 current_hour_min = current_time.strftime("%H:%M")
-today_date_str = now_datetime.strftime("%Y-%m-%d")
 
 st.sidebar.markdown(f"**🕒 लाइव भारतीय समय (IST):** `{current_hour_min}`")
 
 market_status = "NORMAL"
 
-# 2026 की फिक्स सरकारी छुट्टियां (केवल बैकअप के लिए)
-nse_holidays = ["2026-11-10", "2026-11-24", "2026-12-25"]
+# स्टेप A: ऑटोमैटिक एनएससी हॉलिडे चेक (हर साल के त्योहारों को खुद पहचानेगा)
+nse_official_holidays = holidays.FinancialHolidays(market="NSE")
 
-# मास्टर लाइव चेक: सातों दिन सीधे लाइव भाव चेक करेंगे (शनिवार-रविवार का फिक्स ब्लॉक हटा दिया गया है)
-with st.sidebar.spinner("लाइव मार्केट स्टेटस की पुष्टि की जा रही है..."):
-    try:
-        # निफ्टी के सबसे बड़े शेयर की लाइव कीमत चेक करें
-        test_ltp = float(nse_quote_ltp("HDFCBANK"))
-        
-        if test_ltp > 0:
-            # यदि लाइव कीमत मिल रही है, इसका मतलब मार्केट सच में खुला है (चाहे शनिवार हो या छुट्टी)!
-            market_status = "NORMAL"
-        else:
+if now_datetime.date() in nse_official_holidays:
+    st.sidebar.error("🛑 आज मार्केट बंद है (एनएससी राष्ट्रीय अवकाश/हॉलिडे)! एआई ब्लॉक किया गया है।")
+    market_status = "CLOSED"
+
+# स्टेप B: अगर आज कोई फिक्स छुट्टी नहीं है, तो लाइव भाव से कन्फर्म करें (स्पेशल शनिवार/सेशन के लिए)
+if market_status != "CLOSED":
+    with st.sidebar.spinner("लाइव मार्केट स्टेटस की पुष्टि की जा रही है..."):
+        try:
+            test_ltp = float(nse_quote_ltp("HDFCBANK"))
+            if test_ltp <= 0:
+                st.sidebar.error("🛑 आज मार्केट बंद है (हॉलिडे/वीकेंड)! एआई ब्लॉक किया गया है।")
+                market_status = "CLOSED"
+        except:
+            st.sidebar.error("🛑 आज मार्केट बंद है (हॉलिडे/वीकेंड)! एआई ब्लॉक किया गया है।")
             market_status = "CLOSED"
-    except:
-        # अगर सर्वर बंद है या एरर आता है (जो सामान्यतः छुट्टी/वीकेंड पर होता है)
-        market_status = "CLOSED"
 
-# अगर लाइव चेक फेल हुआ, तो यूज़र को अलर्ट दिखाएं
-if market_status == "CLOSED":
-    st.sidebar.error("🛑 आज मार्केट बंद है (हॉलिडे/वीकेंड या प्री-मार्केट)! एआई ब्लॉक किया गया है।")
-
-# चालू मार्केट के इंट्राडे टाइम फिल्टर्स (तभी चलेंगे जब ऊपर लाइव चेक पास होगा)
+# स्टेप C: चालू मार्केट के समय अनुसार वार्निंग/फिल्टर
 if market_status != "CLOSED":
     if current_hour_min < "09:15":
         st.sidebar.warning("💤 मार्केट अभी खुला नहीं है। प्री-ओपन सेशन का इंतज़ार करें।")

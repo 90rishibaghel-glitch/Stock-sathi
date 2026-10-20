@@ -17,7 +17,7 @@ st.caption("लाइव टिक-बाय-टिक मोमेंटम स
 # --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- 1. टाइम मैनेजमेंट और हॉलिडे/वीकेंड फ़िल्टर ---
+# --- 1. टाइम मैनेजमेंट और मास्टर लाइव चेक ---
 IST = pytz.timezone('Asia/Kolkata')
 now_datetime = datetime.now(IST)
 current_time = now_datetime.time()
@@ -28,19 +28,41 @@ st.sidebar.markdown(f"**🕒 लाइव भारतीय समय (IST):** 
 
 market_status = "NORMAL"
 
-# शनिवार (5), रविवार (6) या तय छुट्टियों का फिल्टर
-nse_holidays = ["2026-10-20"]  # यहाँ छुट्टियों की तारीखें डाल सकते हैं
-if now_datetime.weekday() in [5, 6] or today_date_str in nse_holidays:
-    st.sidebar.error("🛑 आज मार्केट बंद है (हॉलिडे/वीकेंड)! एआई ब्लॉक किया गया है।")
-    market_status = "CLOSED"
-elif "11:30" <= current_hour_min <= "13:30":
-    st.sidebar.error("💤 मिड-डे स्लम्प (Sideways Market)! नए ट्रेड लेने से सख्त परहेज करें। (Volume कम है)")
-    market_status = "SLUMP"
-elif current_hour_min >= "15:10":
-    st.sidebar.warning("⚠️ ऑटो स्क्वायर-ऑफ समय! ब्रोकर की पेनल्टी से बचने के लिए तुरंत पोजीशन क्लोज करें।")
-    market_status = "CLOSING"
-elif "09:15" <= current_hour_min <= "09:45":
-    st.sidebar.info("🚀 ओपनिंग वोलैटिलिटी विंडो! शुरुआती 15 मिनट सिर्फ Market Direction देखें।")
+# 2026 की फिक्स सरकारी छुट्टियां (केवल बैकअप के लिए)
+nse_holidays = ["2026-11-10", "2026-11-24", "2026-12-25"]
+
+# मास्टर लाइव चेक: सातों दिन सीधे लाइव भाव चेक करेंगे (शनिवार-रविवार का फिक्स ब्लॉक हटा दिया गया है)
+with st.sidebar.spinner("लाइव मार्केट स्टेटस की पुष्टि की जा रही है..."):
+    try:
+        # निफ्टी के सबसे बड़े शेयर की लाइव कीमत चेक करें
+        test_ltp = float(nse_quote_ltp("HDFCBANK"))
+        
+        if test_ltp > 0:
+            # यदि लाइव कीमत मिल रही है, इसका मतलब मार्केट सच में खुला है (चाहे शनिवार हो या छुट्टी)!
+            market_status = "NORMAL"
+        else:
+            market_status = "CLOSED"
+    except:
+        # अगर सर्वर बंद है या एरर आता है (जो सामान्यतः छुट्टी/वीकेंड पर होता है)
+        market_status = "CLOSED"
+
+# अगर लाइव चेक फेल हुआ, तो यूज़र को अलर्ट दिखाएं
+if market_status == "CLOSED":
+    st.sidebar.error("🛑 आज मार्केट बंद है (हॉलिडे/वीकेंड या प्री-मार्केट)! एआई ब्लॉक किया गया है।")
+
+# चालू मार्केट के इंट्राडे टाइम फिल्टर्स (तभी चलेंगे जब ऊपर लाइव चेक पास होगा)
+if market_status != "CLOSED":
+    if current_hour_min < "09:15":
+        st.sidebar.warning("💤 मार्केट अभी खुला नहीं है। प्री-ओपन सेशन का इंतज़ार करें।")
+        market_status = "CLOSED"
+    elif "11:30" <= current_hour_min <= "13:30":
+        st.sidebar.error("💤 मिड-डे स्लम्प (Sideways Market)! नए ट्रेड लेने से सख्त परहेज करें। (Volume कम है)")
+        market_status = "SLUMP"
+    elif current_hour_min >= "15:10":
+        st.sidebar.warning("⚠️ ऑटो स्क्वायर-ऑफ समय! ब्रोकर की पेनल्टी से बचने के लिए तुरंत पोजीशन क्लोज करें।")
+        market_status = "CLOSING"
+    elif "09:15" <= current_hour_min <= "09:45":
+        st.sidebar.info("🚀 ओपनिंग वोलैटिलिटी विंडो! शुरुआती 15 मिनट सिर्फ Market Direction देखें।")
 
 # --- इंट्राडे रिस्क मैनेजमेंट (Rule #4: Risk Management) ---
 st.sidebar.header("💰 इंट्राडे रिस्क मैनेजमेंट")

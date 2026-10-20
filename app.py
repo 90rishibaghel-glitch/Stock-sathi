@@ -7,12 +7,14 @@ import pytz
 from google import genai
 import holidays  
 from nsepythonserver import nse_quote_ltp, nse_quote
+import json
+import os
 
 # 1. पेज सेटअप (इंट्राडे स्पेशल डार्क थीम और वाइड लेआउट)
 st.set_page_config(page_title="AI Intraday Scalper v2", page_icon="⚡", layout="wide")
 
 st.title("⚡ AI Intraday Scalper & Sector Scanner (v2 - LIVE)")
-st.caption("लाइव टिक-बाय-टिक मोमेंटम स्कैनर | नो-डिली डेटा फीड | जेमिनी एआई सिग्नल्स")
+st.caption("लाइव टिक-बाय-टिक मोमेंटम स्कैनर | नो-डिली डेटा फीड | जेमिनी एआई सिग्नल्स & सेल्फ-लर्निंग मेमोरी")
 
 # --- जेमिनी एआई की सेटिंग्स (Secrets से की उठाना) ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -40,7 +42,7 @@ if now_datetime.date() in nse_official_holidays:
     st.sidebar.error("🛑 आज मार्केट बंद है (एनएससी राष्ट्रीय अवकाश/हॉलिडे)! एआई ब्लॉक किया गया है।")
     market_status = "CLOSED"
 
-# स्टेप B: अगर आज कोई फिक्स छुट्टी नहीं है, तो लाइव भाव से कन्फर्म करें (स्पेशल शनिवार/सेशन के लिए)
+# स्टेप B: अगर आज कोई फिक्स छुट्टी नहीं है, तो लाइव भाव से कन्फर्म करें
 if market_status != "CLOSED":
     with st.sidebar.spinner("लाइव मार्केट स्टेटस की पुष्टि की जा रही है..."):
         try:
@@ -70,6 +72,27 @@ if market_status != "CLOSED":
 st.sidebar.header("💰 इंट्राडे रिस्क मैनेजमेंट")
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
+
+# --- सेल्फ-लर्निंग मेमोरी फंक्शन (Trade Memory JSON) ---
+MEMORY_FILE = "trade_memory.json"
+
+def load_trade_memory():
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_trade_memory(memory_data):
+    try:
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(memory_data, f)
+    except:
+        pass
+
+trade_memory = load_trade_memory()
 
 # --- 25+ मल्टी-सेक्टर स्टॉक यूनिवर्स ---
 SECTOR_UNIVERSE = {
@@ -166,8 +189,12 @@ if market_status != "CLOSED":
                 entry_price = 0.0
                 stop_loss = 0.0
                 target = 0.0
-                score = 0.0
-                
+                score = float(price_change_pct * 1.5) 
+
+                # अगर इस स्टॉक का पिछला रिकॉर्ड खराब रहा है (सेल्फ-लर्निंग पेनल्टी), तो स्कोर कम कर दें
+                if sym in trade_memory and trade_memory[sym].get("penalty_count", 0) > 0:
+                    score *= 0.5  # प्रायोरिटी आधी कर दी जाएगी ताकि गलत ट्रेड से बचाव हो
+
                 if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
                     signal = "📈 BUY ABOVE (Long)"
                     entry_price = float(last_price + (last_price * 0.001))   
@@ -180,7 +207,6 @@ if market_status != "CLOSED":
                     
                     risk_per_share = entry_price - stop_loss
                     target = float(entry_price + (risk_per_share * 2.0))
-                    score = float(price_change_pct * 1.5) 
                     
                 elif last_price < open_price and price_change_pct < -0.4 and last_price < vwap:
                     signal = "📉 SELL BELOW (Short)"
@@ -194,7 +220,6 @@ if market_status != "CLOSED":
                     
                     risk_per_share = stop_loss - entry_price
                     target = float(entry_price - (risk_per_share * 2.0))
-                    score = float(abs(price_change_pct) * 1.5)
 
                 if signal != "NO SIGNAL":
                     per_share_risk = abs(entry_price - stop_loss)
@@ -221,6 +246,9 @@ if market_status != "CLOSED":
     if sorted_trades:
         top_trade = sorted_trades[0]
         
+        # इन-ऐप विजुअल पॉप-अप नोटिफिकेशन (जो भी ऐप खोलेगा उसे तुरंत दिखेगा)
+        st.toast(f"🚨 नया जैकपॉट पिक मिला: {top_trade.get('name')} ({top_trade.get('signal')})", icon="⚡")
+
         st.success("🔥 लाइव एनएसई (NSE) डेटा के आधार पर आज का TOP प्रायोरिटी स्टॉक मिल गया है!")
         st.markdown(f"## 🏆 Priority #1: आज का जैकपॉट इंट्राडे पिक")
         
@@ -230,6 +258,17 @@ if market_status != "CLOSED":
                 st.metric(label=f"{top_trade.get('name', 'Stock')}", value=f"₹{top_trade.get('current_price', 0.0)}", delta=f"{top_trade.get('change', 0.0)}%")
                 st.markdown(f"**📍 सेक्टर:** {top_trade.get('sector', 'N/A')}")
                 st.markdown(f"**⚡ एक्शन सिग्नल:** `{top_trade.get('signal', 'NO SIGNAL')}`")
+                
+                # यूजर फीडबैक बटन (सेल्फ-लर्निंग के लिए)
+                st.markdown("---")
+                st.markdown("💡 **क्या पिछला सिग्नल गलत या फेल हुआ?** (एआई को सिखाने के लिए क्लिक करें):")
+                if st.button(f"⚠️ इस स्टॉक ({top_trade.get('name')}) को ब्लैकलिस्ट/पेनल्टी दें"):
+                    sym_key = top_trade.get('sym')
+                    if sym_key not in trade_memory:
+                        trade_memory[sym_key] = {"penalty_count": 0}
+                    trade_memory[sym_key]["penalty_count"] += 1
+                    save_trade_memory(trade_memory)
+                    st.success(f"✅ {top_trade.get('name')} की गलती दर्ज कर ली गई है। एआई अगली बार सतर्क रहेगा!")
             
             with col2:
                 st.markdown(f"### 🎯 ट्रेडिंग टारगेट्स (सख्त 1:2 रिस्क-रिवॉर्ड आधारित):")

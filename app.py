@@ -14,8 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 # 1. Page Configuration
 st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - AI Live Mentor)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | Top 3 प्रायोरिटी सिग्नल्स + AI मेंटॉर")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - On-Demand AI Mentor)")
+st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | Top 3 प्रायोरिटी सिग्नल्स + ऑन-डिमांड AI")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -105,7 +105,7 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Gemini Core Function (Updated to gemini-3.8-flash) ---
+# --- Gemini Core Function (using gemini-3.8-flash) ---
 def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
     if not api_key: 
         return "⚠️ Gemini API Key सेट नहीं है।"
@@ -120,7 +120,7 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
             f"मार्केट टाइमिंग मोड: {market_state}\n\n"
             f"इस डेटा का एनालिसिस करो और ट्रेडर को हिंदी में सिर्फ 2 पॉइंट में जवाब दो:\n"
             f"1. क्या एंट्री पॉइंट सही है? टारगेट कितनी देर में (या किस समय तक) हिट हो सकता है?\n"
-            f"2. लाइव एडवाइस: क्या पोजीशन बनाए रखें, या टारगेट छोटा/बड़ा करें, या स्टॉप-लॉस ट्रेल करें? (अगर करंट प्राइस SL या Target के पास है, तो बताओ क्या हिट होने वाला है)."
+            f"2. लाइव एडवाइस: क्या पोजीशन बनाए रखें, या टारगेट छोटा/बड़ा करें, या स्टॉप-लॉस ट्रेल करें?"
         )
         response = client.models.generate_content(
             model='gemini-3.8-flash',
@@ -131,7 +131,7 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
         return f"एआई सर्वर कनेक्ट नहीं हो पाया: {str(e)}"
 
 # --- Frontend Rendering ---
-st.subheader("📊 रीयल-टाइम Nifty 50 लाइव स्कैनर (No Lag - NSE Direct + AI Mentor)")
+st.subheader("📊 रीयल-टाइम Nifty 50 लाइव स्कैनर (No Lag - NSE Direct)")
 
 if market_status == "CLOSED":
     st.error("🛑 **अलर्ट:** आज मार्केट बंद है। लाइव स्कैनिंग वर्किंग डेज पर सुबह 9:15 से दोपहर 3:30 के बीच ही काम करती है।")
@@ -200,7 +200,7 @@ if market_status != "CLOSED":
     sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
     if sorted_trades:
-        st.success(f"🔥 Nifty 50 लाइव स्कैन पूरा हुआ! AI मेंटॉर के साथ टॉप सिग्नल्स तैयार हैं।")
+        st.success(f"🔥 Nifty 50 लाइव स्कैन पूरा हुआ! टॉप सिग्नल्स तैयार हैं।")
         
         top_names = ", ".join([t['sym'] for t in sorted_trades[:3]])
         st.toast(f"🚨 [{current_hour_min} IST] Top Priority Stocks: {top_names}", icon="⚡")
@@ -209,8 +209,8 @@ if market_status != "CLOSED":
         df_display = pd.DataFrame(sorted_trades)[['sym', 'signal', 'current_price', 'change', 'price', 'target', 'sl', 'qty']]
         st.dataframe(df_display, use_container_width=True)
         
-        # --- Top 3 Priority Cards Section with AI Mentor ---
-        st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + AI Live Mentor")
+        # --- Top 3 Priority Cards Section with On-Demand AI Button ---
+        st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
         
         top_3 = sorted_trades[:3]
         priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
@@ -230,19 +230,22 @@ if market_status != "CLOSED":
                     st.markdown(f"* **Target Price (लक्ष्य):** <span style='color:#2ecc71; font-size:18px; font-weight:bold;'>₹{trade.get('target'):.2f}</span>", unsafe_allow_html=True)
                     st.markdown(f"* **Stop Loss (SL):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{trade.get('sl'):.2f}</span> (VWAP आधारित सुरक्षित SL)", unsafe_allow_html=True)
 
-                # --- AI लाइव मेंटॉर सेक्शन ---
+                # --- On-Demand AI Mentor Button ---
                 st.markdown("---")
-                with st.spinner(f"🤖 Gemini AI {trade.get('sym')} का लाइव एनालिसिस कर रहा है..."):
-                    ai_verdict = get_ai_intraday_verdict(
-                        ticker_sym=trade.get('sym'),
-                        signal_type=trade.get('signal'),
-                        price=trade.get('current_price'),
-                        target=trade.get('target'),
-                        sl=trade.get('sl'),
-                        open_p=trade.get('open_price'),
-                        high_p=trade.get('high_price'),
-                        low_p=trade.get('low_price'),
-                        market_state=market_status,
-                        api_key=gemini_api_key
-                    )
-                st.info(f"💡 **AI लाइव ट्रेड मेंटॉर:**\n\n{ai_verdict}")
+                ai_button_key = f"ai_btn_{trade.get('sym')}_{idx}"
+                
+                if st.button(f"🤖 {trade.get('sym')} का AI लाइव एनालिसिस प्राप्त करें", key=ai_button_key):
+                    with st.spinner(f"🤖 Gemini AI {trade.get('sym')} का लाइव एनालिसिस कर रहा है..."):
+                        ai_verdict = get_ai_intraday_verdict(
+                            ticker_sym=trade.get('sym'),
+                            signal_type=trade.get('signal'),
+                            price=trade.get('current_price'),
+                            target=trade.get('target'),
+                            sl=trade.get('sl'),
+                            open_p=trade.get('open_price'),
+                            high_p=trade.get('high_price'),
+                            low_p=trade.get('low_price'),
+                            market_state=market_status,
+                            api_key=gemini_api_key
+                        )
+                    st.info(f"💡 **AI लाइव ट्रेड मेंटॉर ({trade.get('sym')}):**\n\n{ai_verdict}")

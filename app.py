@@ -14,8 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 # 1. Page Configuration
 st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Capital Based)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | केवल कैपिटल आधारित क्वांटिटी + ऑन-डिमांड AI")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Locked Top 3)")
+st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | फिक्सड टॉप 3 प्रायोरिटी + ऑन-डिमांड AI")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -59,7 +59,7 @@ if market_status != "CLOSED":
         st.sidebar.warning("⚠️ ऑटो स्क्वायर-ऑफ समय! तुरंत पोजीशन क्लोज करें।")
         market_status = "CLOSING"
 
-# --- Risk & Capital Management (केवल कैपिटल रखी गई है, रिस्क स्लाइडर हटा दिया गया है) ---
+# --- Capital Management Input ---
 st.sidebar.header("💰 Capital Management")
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
 
@@ -104,7 +104,7 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Gemini Core Function ---
+# --- Gemini Core Function with Quota Error Catching ---
 def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
     if not api_key: 
         return "⚠️ Gemini API Key सेट नहीं है।"
@@ -127,7 +127,10 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
         )
         return response.text.strip()
     except Exception as e:
-        return f"एआई सर्वर कनेक्ट नहीं हो पाया: {str(e)}"
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            return "⚠️ **Google AI Quota Limit Exceeded (429):** आपके फ्री टियर की दैनिक सीमा समाप्त हो गई है। कृपया कल कोशिश करें या पेड प्लान देखें। आपके लेवल्स (Entry, Target, SL) पूरी तरह सुरक्षित हैं।"
+        return f"एआई सर्वर कनेक्ट नहीं हो पाया: {err_str}"
 
 # --- Frontend Rendering ---
 st.subheader("📊 रीयल-टाइम Nifty 50 लाइव स्कैनर (No Lag - NSE Direct)")
@@ -137,115 +140,116 @@ if market_status == "CLOSED":
 elif market_status == "SLUMP":
     st.warning("⚠️ **अलर्ट:** अभी मिड-डे टाइम चल रहा है। वॉल्यूम कम हो सकता है।")
 
-if st.button("🔄 Nifty 50 लाइव स्कैन शुरू करें"):
-    st.rerun()
+# Session State initialize करना ताकि स्टॉक बार-बार न बदलें
+if 'top_3_locked' not in st.session_state:
+    st.session_state.top_3_locked = None
 
-all_intraday_trades = []
-
-if market_status != "CLOSED":
-    results = []
-    with st.spinner("Nifty 50 के सभी 50 स्टॉक्स का 100% लाइव डेटा NSE से बिना किसी देरी के निकाला जा रहा है..."):
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(process_single_stock_live, NIFTY_50_TICKERS))
-            
-    for market_data in results:
-        if market_data is None:
-            continue
-            
-        sym = market_data["sym"]
-        last_price = market_data["last_price"]
-        open_price = market_data["open_price"]
-        high_price = market_data["high_price"]
-        low_price = market_data["low_price"]
-        vwap = market_data["vwap"]
-        prev_close = market_data["prev_close"]
-        
-        price_change_pct = float(((last_price - open_price) / open_price) * 100)
-        
-        signal = "NO SIGNAL"
-        entry_price, stop_loss, target = 0.0, 0.0, 0.0
-        
-        score = float(abs(price_change_pct) * 3.0)
-
-        if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
-            signal = "📈 BUY ABOVE (Live Confirmed)"
-            entry_price = float(last_price + (last_price * 0.0005))   
-            stop_loss = float(vwap) if (entry_price - vwap < entry_price * 0.01) else float(entry_price - (entry_price * 0.006))
-            risk_per_share = entry_price - stop_loss
-            target = float(entry_price + (risk_per_share * 2.0))
-            
-        elif last_price < open_price and price_change_pct < -0.4 and last_price < vwap:
-            signal = "📉 SELL BELOW (Live Confirmed)"
-            entry_price = float(last_price - (last_price * 0.0005))   
-            stop_loss = float(vwap) if (vwap - entry_price < entry_price * 0.01) else float(entry_price + (entry_price * 0.006))
-            risk_per_share = stop_loss - entry_price
-            target = float(entry_price - (risk_per_share * 2.0))
-
-        if signal != "NO SIGNAL" and (entry_price - stop_loss) != 0:
-            all_intraday_trades.append({
-                "sym": sym, "price": round(entry_price, 2), 
-                "current_price": round(last_price, 2), "change": round(price_change_pct, 2), 
-                "signal": signal, "target": round(target, 2), "sl": round(stop_loss, 2),
-                "score": score,
-                "open_price": open_price, "high_price": high_price, "low_price": low_price
-            })
-
-    # टॉप 3 स्टॉक पूरी तरह फिक्स (कैपिटल बदलने पर स्टॉक नहीं बदलेंगे)
-    sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
-
-    if sorted_trades:
-        st.success(f"🔥 Nifty 50 लाइव स्कैन पूरा हुआ! टॉप सिग्नल्स तैयार हैं।")
-        
-        top_names = ", ".join([t['sym'] for t in sorted_trades[:3]])
-        st.toast(f"🚨 [{current_hour_min} IST] Top Priority Stocks: {top_names}", icon="⚡")
-        
-        st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
-        
-        top_3 = sorted_trades[:3]
-        priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
-        
-        for idx, trade in enumerate(top_3):
-            # --- केवल कैपिटल (₹10k, ₹20k, ₹50k) के आधार पर शेयरों की संख्या (Quantity) का कैलकुलेशन ---
-            per_share_risk = abs(trade['price'] - trade['sl'])
-            # इंट्राडे में 5x मार्जिन मानकर कैपिटल के हिसाब से मैक्सिमम शेयर्स
-            max_qty_by_capital = int((capital * 5) // trade['price'])
-            final_qty = max(1, max_qty_by_capital)
-
-            total_trade_risk = round(per_share_risk * final_qty, 2)
-            per_share_reward = abs(trade['target'] - trade['price'])
-            total_potential_profit = round(per_share_reward * final_qty, 2)
-
-            st.markdown(f"### {priority_titles[idx]}: {trade.get('sym')}")
-            with st.container(border=True):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric(label=f"स्टॉक सिंबल: {trade.get('sym')}", value=f"₹{trade.get('current_price')}", delta=f"{trade.get('change')}%")
-                    st.markdown(f"**⚡ लाइव एक्शन:** `{trade.get('signal')}`")
-                    st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (कैपिटल के आधार पर)")
-                    st.markdown(f"📉 **अनुमानित रिस्क:** ₹{total_trade_risk} | 🎯 **संभावित प्रॉफिट (1:2):** ₹{total_potential_profit}")
+if st.button("🔄 Nifty 50 लाइव स्कैन शुरू करें (नया स्कैन)"):
+    all_intraday_trades = []
+    if market_status != "CLOSED":
+        results = []
+        with st.spinner("Nifty 50 के सभी 50 स्टॉक्स का 100% लाइव डेटा NSE से निकाला जा रहा है..."):
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(process_single_stock_live, NIFTY_50_TICKERS))
                 
-                with col2:
-                    st.markdown("### 🎯 लाइव ऑर्डर्स की जानकारी (1:2 रिस्क-रिवॉर्ड):")
-                    st.markdown(f"* **Entry Price Order:** <span style='color:#3498db; font-size:18px; font-weight:bold;'>₹{trade.get('price'):.2f}</span> (Limit Order लगाएँ)", unsafe_allow_html=True)
-                    st.markdown(f"* **Target Price (लक्ष्य):** <span style='color:#2ecc71; font-size:18px; font-weight:bold;'>₹{trade.get('target'):.2f}</span>", unsafe_allow_html=True)
-                    st.markdown(f"* **Stop Loss (SL):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{trade.get('sl'):.2f}</span> (VWAP आधारित सुरक्षित SL)", unsafe_allow_html=True)
-
-                # --- On-Demand AI Mentor Button ---
-                st.markdown("---")
-                ai_button_key = f"ai_btn_{trade.get('sym')}_{idx}"
+        for market_data in results:
+            if market_data is None:
+                continue
                 
-                if st.button(f"🤖 {trade.get('sym')} का AI लाइव एनालिसिस प्राप्त करें", key=ai_button_key):
-                    with st.spinner(f"🤖 Gemini AI {trade.get('sym')} का लाइव एनालिसिस कर रहा है..."):
-                        ai_verdict = get_ai_intraday_verdict(
-                            ticker_sym=trade.get('sym'),
-                            signal_type=trade.get('signal'),
-                            price=trade.get('current_price'),
-                            target=trade.get('target'),
-                            sl=trade.get('sl'),
-                            open_p=trade.get('open_price'),
-                            high_p=trade.get('high_price'),
-                            low_p=trade.get('low_price'),
-                            market_state=market_status,
-                            api_key=gemini_api_key
-                        )
-                    st.info(f"💡 **AI लाइव ट्रेड मेंटॉर ({trade.get('sym')}):**\n\n{ai_verdict}")
+            sym = market_data["sym"]
+            last_price = market_data["last_price"]
+            open_price = market_data["open_price"]
+            high_price = market_data["high_price"]
+            low_price = market_data["low_price"]
+            vwap = market_data["vwap"]
+            prev_close = market_data["prev_close"]
+            
+            price_change_pct = float(((last_price - open_price) / open_price) * 100)
+            
+            signal = "NO SIGNAL"
+            entry_price, stop_loss, target = 0.0, 0.0, 0.0
+            
+            score = float(abs(price_change_pct) * 3.0)
+
+            if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
+                signal = "📈 BUY ABOVE (Live Confirmed)"
+                entry_price = float(last_price + (last_price * 0.0005))   
+                stop_loss = float(vwap) if (entry_price - vwap < entry_price * 0.01) else float(entry_price - (entry_price * 0.006))
+                risk_per_share = entry_price - stop_loss
+                target = float(entry_price + (risk_per_share * 2.0))
+                
+            elif last_price < open_price and price_change_pct < -0.4 and last_price < vwap:
+                signal = "📉 SELL BELOW (Live Confirmed)"
+                entry_price = float(last_price - (last_price * 0.0005))   
+                stop_loss = float(vwap) if (vwap - entry_price < entry_price * 0.01) else float(entry_price + (entry_price * 0.006))
+                risk_per_share = stop_loss - entry_price
+                target = float(entry_price - (risk_per_share * 2.0))
+
+            if signal != "NO SIGNAL" and (entry_price - stop_loss) != 0:
+                all_intraday_trades.append({
+                    "sym": sym, "price": round(entry_price, 2), 
+                    "current_price": round(last_price, 2), "change": round(price_change_pct, 2), 
+                    "signal": signal, "target": round(target, 2), "sl": round(stop_loss, 2),
+                    "score": score,
+                    "open_price": open_price, "high_price": high_price, "low_price": low_price
+                })
+
+        sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
+        # Top 3 स्टॉक्स को Session State में लॉक कर दिया गया है
+        st.session_state.top_3_locked = sorted_trades[:3]
+
+# --- Display Top 3 Locked Stocks (AI बटन या कैपिटल बदलने पर यह नहीं बदलेंगे) ---
+if st.session_state.top_3_locked:
+    st.success(f"🔥 टॉप 3 प्रायोरिटी स्टॉक लॉक हैं। आप बेझिझक AI बटन या कैपिटल बदल सकते हैं।")
+    
+    st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
+    
+    top_3 = st.session_state.top_3_locked
+    priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
+    
+    for idx, trade in enumerate(top_3):
+        # कैपिटल के आधार पर क्वांटिटी कैलकुलेशन
+        per_share_risk = abs(trade['price'] - trade['sl'])
+        max_qty_by_capital = int((capital * 5) // trade['price'])
+        final_qty = max(1, max_qty_by_capital)
+
+        total_trade_risk = round(per_share_risk * final_qty, 2)
+        per_share_reward = abs(trade['target'] - trade['price'])
+        total_potential_profit = round(per_share_reward * final_qty, 2)
+
+        st.markdown(f"### {priority_titles[idx]}: {trade.get('sym')}")
+        with st.container(border=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(label=f"स्टॉक सिंबल: {trade.get('sym')}", value=f"₹{trade.get('current_price')}", delta=f"{trade.get('change')}%")
+                st.markdown(f"**⚡ लाइव एक्शन:** `{trade.get('signal')}`")
+                st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (कैपिटल के आधार पर)")
+                st.markdown(f"📉 **अनुमानित रिस्क:** ₹{total_trade_risk} | 🎯 **संभावित प्रॉफिट (1:2):** ₹{total_potential_profit}")
+            
+            with col2:
+                st.markdown("### 🎯 लाइव ऑर्डर्स की जानकारी (1:2 रिस्क-रिवॉर्ड):")
+                st.markdown(f"* **Entry Price Order:** <span style='color:#3498db; font-size:18px; font-weight:bold;'>₹{trade.get('price'):.2f}</span> (Limit Order लगाएँ)", unsafe_allow_html=True)
+                st.markdown(f"* **Target Price (लक्ष्य):** <span style='color:#2ecc71; font-size:18px; font-weight:bold;'>₹{trade.get('target'):.2f}</span>", unsafe_allow_html=True)
+                st.markdown(f"* **Stop Loss (SL):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{trade.get('sl'):.2f}</span> (VWAP आधारित सुरक्षित SL)", unsafe_allow_html=True)
+
+            # --- On-Demand AI Mentor Button ---
+            st.markdown("---")
+            ai_button_key = f"ai_btn_{trade.get('sym')}_{idx}"
+            
+            if st.button(f"🤖 {trade.get('sym')} का AI लाइव एनालिसिस प्राप्त करें", key=ai_button_key):
+                with st.spinner(f"🤖 Gemini AI {trade.get('sym')} का लाइव एनालिसिस कर रहा है..."):
+                    ai_verdict = get_ai_intraday_verdict(
+                        ticker_sym=trade.get('sym'),
+                        signal_type=trade.get('signal'),
+                        price=trade.get('current_price'),
+                        target=trade.get('target'),
+                        sl=trade.get('sl'),
+                        open_p=trade.get('open_price'),
+                        high_p=trade.get('high_price'),
+                        low_p=trade.get('low_price'),
+                        market_state=market_status,
+                        api_key=gemini_api_key
+                    )
+                st.info(f"💡 **AI लाइव ट्रेड मेंटॉर ({trade.get('sym')}):**\n\n{ai_verdict}")
+else:
+    st.info("ℹ️ कृपया ऊपर दिए गए **'🔄 Nifty 50 लाइव स्कैन शुरू करें'** बटन पर क्लिक करें ताकि टॉप 3 स्टॉक लोड हो सकें।")

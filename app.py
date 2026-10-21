@@ -12,10 +12,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 # 1. Page Configuration
-st.set_page_config(page_title="AI Live Nifty50 Scalper v5 Pro", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5 Pro - Top 3 Priority)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | Top 3 प्रायोरिटी सिग्नल्स")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - AI Live Mentor)")
+st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | Top 3 प्रायोरिटी सिग्नल्स + AI मेंटॉर")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -79,7 +79,6 @@ NIFTY_50_TICKERS = [
 # --- 100% Live NSE Data Engine (No Lag Mechanism) ---
 def process_single_stock_live(ticker):
     try:
-        # Fetching Live Quote from NSE Directly
         meta_data = nse_quote(ticker, "priceInfo")
         if not meta_data:
             return None
@@ -89,8 +88,6 @@ def process_single_stock_live(ticker):
         high_price = float(meta_data.get('max', 0))
         low_price = float(meta_data.get('min', 0))
         prev_close = float(meta_data.get('previousClose', 0))
-        
-        # Real VWAP from NSE Live Data Feed
         vwap = float(meta_data.get('vwap', ltp))
         
         if ltp == 0 or open_price == 0:
@@ -108,20 +105,29 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Gemini Core ---
-def get_ai_intraday_verdict(ticker_sym, api_key):
-    if not api_key: return "AI न्यूज़ स्कैनर बंद है।"
+# --- Updated Gemini Core (बदलाव नंबर 1) ---
+def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
+    if not api_key: return "⚠️ Gemini API Key सेट नहीं है।"
     try:
         client = genai.Client(api_key=api_key)
-        prompt = (f"तुम एक एक्सपर्ट डे-ट्रेडर हो। स्टॉक {ticker_sym} आज Nifty 50 में लाइव चार्ट पर ब्रेकआउट "
-                  f"दे रहा है। इसके लिए सख्त स्टॉपलॉस के साथ हिंदी में 1 सटीक ट्रेडिंग गाइडलाइन दो।")
+        prompt = (
+            f"तुम एक प्रोफेशनल लाइव एनएसई (NSE) रिस्क मैनेजर और प्रो-ट्रेडर हो।\n"
+            f"स्टॉक: {ticker_sym}\n"
+            f"लाइव सिग्नल: {signal_type}\n"
+            f"आज का डेटा -> Open: {open_p}, High: {high_p}, Low: {low_p}, Current Price: {price}\n"
+            f"सिस्टम आर्डर -> Entry: {price}, Target: {target}, StopLoss: {sl}\n"
+            f"मार्केट टाइमिंग मोड: {market_state}\n\n"
+            f"इस डेटा का एनालिसिस करो और ट्रेडर को हिंदी में सिर्फ 2 पॉइंट में जवाब दो:\n"
+            f"1. क्या एंट्री पॉइंट सही है? टारगेट कितनी देर में (या किस समय तक) हिट हो सकता है?\n"
+            f"2. लाइव एडवाइस: क्या पोजीशन बनाए रखें, या टारगेट छोटा/बड़ा करें, या स्टॉप-लॉस ट्रेल करें? (अगर करंट प्राइस SL या Target के पास है, तो बताओ क्या हिट होने वाला है)."
+        )
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text.strip()
     except Exception as e:
         return f"एआई सर्वर कनेक्ट नहीं हो पाया: {str(e)}"
 
 # --- Frontend Rendering ---
-st.subheader("📊 रीयल-टाइम Nifty 50 लाइव स्कैनर (No Lag - NSE Direct)")
+st.subheader("📊 रीयल-टाइम Nifty 50 लाइव स्कैनर (No Lag - NSE Direct + AI Mentor)")
 
 if market_status == "CLOSED":
     st.error("🛑 **अलर्ट:** आज मार्केट बंद है। लाइव स्कैनिंग वर्किंग डेज पर सुबह 9:15 से दोपहर 3:30 के बीच ही काम करती है।")
@@ -136,7 +142,6 @@ all_intraday_trades = []
 if market_status != "CLOSED":
     results = []
     with st.spinner("Nifty 50 के सभी 50 स्टॉक्स का 100% लाइव डेटा NSE से बिना किसी देरी के निकाला जा रहा है..."):
-        # Parallel Execution for High Speed (10 threads)
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(process_single_stock_live, NIFTY_50_TICKERS))
             
@@ -158,10 +163,8 @@ if market_status != "CLOSED":
         signal = "NO SIGNAL"
         entry_price, stop_loss, target = 0.0, 0.0, 0.0
         
-        # Priority Score based on live trend strength
         score = float(abs(price_change_pct) * 3.0)
 
-        # LIVE BREAKOUT LOGIC
         if last_price > open_price and price_change_pct > 0.4 and last_price > vwap:
             signal = "📈 BUY ABOVE (Live Confirmed)"
             entry_price = float(last_price + (last_price * 0.0005))   
@@ -179,23 +182,22 @@ if market_status != "CLOSED":
         if signal != "NO SIGNAL" and (entry_price - stop_loss) != 0:
             per_share_risk = abs(entry_price - stop_loss)
             qty = int(risk_per_trade // per_share_risk)
-            max_qty_allowed = int((capital * 5) // entry_price) # 5x Intraday Leverage
+            max_qty_allowed = int((capital * 5) // entry_price)
             final_qty = min(qty, max_qty_allowed)
             
             all_intraday_trades.append({
                 "sym": sym, "price": round(entry_price, 2), 
                 "current_price": round(last_price, 2), "change": round(price_change_pct, 2), 
                 "signal": signal, "target": round(target, 2), "sl": round(stop_loss, 2),
-                "qty": final_qty, "score": score
+                "qty": final_qty, "score": score,
+                "open_price": open_price, "high_price": high_price, "low_price": low_price
             })
 
-    # Sorting to get Top Priority Stocks
     sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
     if sorted_trades:
-        st.success(f"🔥 Nifty 50 लाइव स्कैन पूरा हुआ! बिना किसी देरी (No-Lag) के सिग्नल मिल गए हैं।")
+        st.success(f"🔥 Nifty 50 लाइव स्कैन पूरा हुआ! AI मेंटॉर के साथ टॉप सिग्नल्स तैयार हैं।")
         
-        # In-App Notification Toast
         top_names = ", ".join([t['sym'] for t in sorted_trades[:3]])
         st.toast(f"🚨 [{current_hour_min} IST] Top Priority Stocks: {top_names}", icon="⚡")
         
@@ -203,8 +205,8 @@ if market_status != "CLOSED":
         df_display = pd.DataFrame(sorted_trades)[['sym', 'signal', 'current_price', 'change', 'price', 'target', 'sl', 'qty']]
         st.dataframe(df_display, use_container_width=True)
         
-        # --- Top 3 Priority Cards Section ---
-        st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks")
+        # --- Top 3 Priority Cards Section with AI Mentor (बदलाव नंबर 2) ---
+        st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + AI Live Mentor")
         
         top_3 = sorted_trades[:3]
         priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
@@ -223,3 +225,20 @@ if market_status != "CLOSED":
                     st.markdown(f"* **Entry Price Order:** <span style='color:#3498db; font-size:18px; font-weight:bold;'>₹{trade.get('price'):.2f}</span> (Limit Order लगाएँ)", unsafe_allow_html=True)
                     st.markdown(f"* **Target Price (लक्ष्य):** <span style='color:#2ecc71; font-size:18px; font-weight:bold;'>₹{trade.get('target'):.2f}</span>", unsafe_allow_html=True)
                     st.markdown(f"* **Stop Loss (SL):** <span style='color:#e74c3c; font-size:18px; font-weight:bold;'>₹{trade.get('sl'):.2f}</span> (VWAP आधारित सुरक्षित SL)", unsafe_allow_html=True)
+
+                # --- AI लाइव मेंटॉर सेक्शन ---
+                st.markdown("---")
+                with st.spinner(f"🤖 Gemini AI {trade.get('sym')} का लाइव एनालिसिस कर रहा है..."):
+                    ai_verdict = get_ai_intraday_verdict(
+                        ticker_sym=trade.get('sym'),
+                        signal_type=trade.get('signal'),
+                        price=trade.get('current_price'),
+                        target=trade.get('target'),
+                        sl=trade.get('sl'),
+                        open_p=trade.get('open_price'),
+                        high_p=trade.get('high_price'),
+                        low_p=trade.get('low_price'),
+                        market_state=market_status,
+                        api_key=gemini_api_key
+                    )
+                st.info(f"💡 **AI लाइव ट्रेड मेंटॉर:**\n\n{ai_verdict}")

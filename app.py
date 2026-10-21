@@ -105,7 +105,7 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Gemini Core Function ---
+# --- Gemini Core Function (Updated to gemini-3.8-flash) ---
 def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
     if not api_key: 
         return "⚠️ Gemini API Key सेट नहीं है।"
@@ -123,7 +123,7 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
             f"2. लाइव एडवाइस: क्या पोजीशन बनाए रखें, या टारगेट छोटा/बड़ा करें, या स्टॉप-लॉस ट्रेल करें? (अगर करंट प्राइस SL या Target के पास है, तो बताओ क्या हिट होने वाला है)."
         )
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt
         )
         return response.text.strip()

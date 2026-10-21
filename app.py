@@ -14,8 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 # 1. Page Configuration
 st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Locked Top 3)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | फिक्सड टॉप 3 प्रायोरिटी + ऑन-डिमांड AI")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Pure Cash / No Margin)")
+st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | केवल शुद्ध कैपिटल (No Margin) आधारित क्वांटिटी + ऑन-डिमांड AI")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -60,8 +60,8 @@ if market_status != "CLOSED":
         market_status = "CLOSING"
 
 # --- Capital Management Input ---
-st.sidebar.header("💰 Capital Management")
-capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
+st.sidebar.header("💰 Capital Management (Pure Cash)")
+capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=10000, step=1000)
 
 # --- Dynamic Nifty 50 Ticker List ---
 NIFTY_50_TICKERS = [
@@ -129,7 +129,7 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
     except Exception as e:
         err_str = str(e)
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            return "⚠️ **Google AI Quota Limit Exceeded (429):** आपके फ्री टियर की दैनिक सीमा समाप्त हो गई है। कृपया कल कोशिश करें या पेड प्लान देखें। आपके लेवल्स (Entry, Target, SL) पूरी तरह सुरक्षित हैं।"
+            return "⚠️ **Google AI Quota Limit Exceeded (429):** आपके फ्री टियर की दैनिक सीमा समाप्त हो गई है। कृपया कल कोशिश करें या पेड प्लान देखें।"
         return f"एआई सर्वर कनेक्ट नहीं हो पाया: {err_str}"
 
 # --- Frontend Rendering ---
@@ -195,12 +195,11 @@ if st.button("🔄 Nifty 50 लाइव स्कैन शुरू करे�
                 })
 
         sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
-        # Top 3 स्टॉक्स को Session State में लॉक कर दिया गया है
         st.session_state.top_3_locked = sorted_trades[:3]
 
-# --- Display Top 3 Locked Stocks (AI बटन या कैपिटल बदलने पर यह नहीं बदलेंगे) ---
+# --- Display Top 3 Locked Stocks (Pure Capital Calculation) ---
 if st.session_state.top_3_locked:
-    st.success(f"🔥 टॉप 3 प्रायोरिटी स्टॉक लॉक हैं। आप बेझिझक AI बटन या कैपिटल बदल सकते हैं।")
+    st.success(f"🔥 टॉप 3 प्रायोरिटी स्टॉक लॉक हैं। (शुद्ध पूँजी आधारित कैलकुलेशन)")
     
     st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
     
@@ -208,10 +207,12 @@ if st.session_state.top_3_locked:
     priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
     
     for idx, trade in enumerate(top_3):
-        # कैपिटल के आधार पर क्वांटिटी कैलकुलेशन
+        # --- शुद्ध कैपिटल आधारित क्वांटिटी कैलकुलेशन (बिना किसी मार्जिन के) ---
         per_share_risk = abs(trade['price'] - trade['sl'])
-        max_qty_by_capital = int((capital * 5) // trade['price'])
-        final_qty = max(1, max_qty_by_capital)
+        
+        # केवल मूल कैपिटल से खरीदे जा सकने वाले शेयर्स (Capital // Entry Price)
+        qty_by_pure_capital = int(capital // trade['price'])
+        final_qty = max(1, qty_by_pure_capital)
 
         total_trade_risk = round(per_share_risk * final_qty, 2)
         per_share_reward = abs(trade['target'] - trade['price'])
@@ -223,7 +224,7 @@ if st.session_state.top_3_locked:
             with col1:
                 st.metric(label=f"स्टॉक सिंबल: {trade.get('sym')}", value=f"₹{trade.get('current_price')}", delta=f"{trade.get('change')}%")
                 st.markdown(f"**⚡ लाइव एक्शन:** `{trade.get('signal')}`")
-                st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (कैपिटल के आधार पर)")
+                st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (शुद्ध कैपिटल आधारित - No Margin)")
                 st.markdown(f"📉 **अनुमानित रिस्क:** ₹{total_trade_risk} | 🎯 **संभावित प्रॉफिट (1:2):** ₹{total_potential_profit}")
             
             with col2:

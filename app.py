@@ -105,9 +105,10 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Updated Gemini Core (बदलाव नंबर 1) ---
+# --- Gemini Core Function ---
 def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
-    if not api_key: return "⚠️ Gemini API Key सेट नहीं है।"
+    if not api_key: 
+        return "⚠️ Gemini API Key सेट नहीं है।"
     try:
         client = genai.Client(api_key=api_key)
         prompt = (
@@ -121,7 +122,10 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
             f"1. क्या एंट्री पॉइंट सही है? टारगेट कितनी देर में (या किस समय तक) हिट हो सकता है?\n"
             f"2. लाइव एडवाइस: क्या पोजीशन बनाए रखें, या टारगेट छोटा/बड़ा करें, या स्टॉप-लॉस ट्रेल करें? (अगर करंट प्राइस SL या Target के पास है, तो बताओ क्या हिट होने वाला है)."
         )
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
         return response.text.strip()
     except Exception as e:
         return f"एआई सर्वर कनेक्ट नहीं हो पाया: {str(e)}"
@@ -205,7 +209,7 @@ if market_status != "CLOSED":
         df_display = pd.DataFrame(sorted_trades)[['sym', 'signal', 'current_price', 'change', 'price', 'target', 'sl', 'qty']]
         st.dataframe(df_display, use_container_width=True)
         
-        # --- Top 3 Priority Cards Section with AI Mentor (बदलाव नंबर 2) ---
+        # --- Top 3 Priority Cards Section with AI Mentor ---
         st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + AI Live Mentor")
         
         top_3 = sorted_trades[:3]

@@ -14,8 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 # 1. Page Configuration
 st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - On-Demand AI Mentor)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | Top 3 प्रायोरिटी सिग्नल्स + ऑन-डिमांड AI")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Capital Based)")
+st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | केवल कैपिटल आधारित क्वांटिटी + ऑन-डिमांड AI")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -59,10 +59,9 @@ if market_status != "CLOSED":
         st.sidebar.warning("⚠️ ऑटो स्क्वायर-ऑफ समय! तुरंत पोजीशन क्लोज करें।")
         market_status = "CLOSING"
 
-# --- Risk Management ---
-st.sidebar.header("💰 Risk Management")
+# --- Risk & Capital Management (केवल कैपिटल रखी गई है, रिस्क स्लाइडर हटा दिया गया है) ---
+st.sidebar.header("💰 Capital Management")
 capital = st.sidebar.number_input("आपकी ट्रेडिंग पूँजी (₹)", min_value=2000, value=25000, step=1000)
-risk_per_trade = st.sidebar.slider("एक ट्रेड में अधिकतम रिस्क (₹)", 100, 2000, 500, 50)
 
 # --- Dynamic Nifty 50 Ticker List ---
 NIFTY_50_TICKERS = [
@@ -76,7 +75,7 @@ NIFTY_50_TICKERS = [
     "TITAN", "ULTRACEMCO", "WIPRO", "ZOMATO"
 ]
 
-# --- 100% Live NSE Data Engine (No Lag Mechanism) ---
+# --- 100% Live NSE Data Engine ---
 def process_single_stock_live(ticker):
     try:
         meta_data = nse_quote(ticker, "priceInfo")
@@ -105,7 +104,7 @@ def process_single_stock_live(ticker):
     except Exception as e:
         return None
 
-# --- Gemini Core Function (using gemini-3.8-flash) ---
+# --- Gemini Core Function ---
 def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, high_p, low_p, market_state, api_key):
     if not api_key: 
         return "⚠️ Gemini API Key सेट नहीं है।"
@@ -162,7 +161,6 @@ if market_status != "CLOSED":
         prev_close = market_data["prev_close"]
         
         price_change_pct = float(((last_price - open_price) / open_price) * 100)
-        daily_gain_pct = float(((last_price - prev_close) / prev_close) * 100)
         
         signal = "NO SIGNAL"
         entry_price, stop_loss, target = 0.0, 0.0, 0.0
@@ -184,19 +182,15 @@ if market_status != "CLOSED":
             target = float(entry_price - (risk_per_share * 2.0))
 
         if signal != "NO SIGNAL" and (entry_price - stop_loss) != 0:
-            per_share_risk = abs(entry_price - stop_loss)
-            qty = int(risk_per_trade // per_share_risk)
-            max_qty_allowed = int((capital * 5) // entry_price)
-            final_qty = min(qty, max_qty_allowed)
-            
             all_intraday_trades.append({
                 "sym": sym, "price": round(entry_price, 2), 
                 "current_price": round(last_price, 2), "change": round(price_change_pct, 2), 
                 "signal": signal, "target": round(target, 2), "sl": round(stop_loss, 2),
-                "qty": final_qty, "score": score,
+                "score": score,
                 "open_price": open_price, "high_price": high_price, "low_price": low_price
             })
 
+    # टॉप 3 स्टॉक पूरी तरह फिक्स (कैपिटल बदलने पर स्टॉक नहीं बदलेंगे)
     sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
 
     if sorted_trades:
@@ -205,24 +199,30 @@ if market_status != "CLOSED":
         top_names = ", ".join([t['sym'] for t in sorted_trades[:3]])
         st.toast(f"🚨 [{current_hour_min} IST] Top Priority Stocks: {top_names}", icon="⚡")
         
-        st.markdown("### 📋 एक्टिव लाइव सिग्नल्स की पूरी लिस्ट")
-        df_display = pd.DataFrame(sorted_trades)[['sym', 'signal', 'current_price', 'change', 'price', 'target', 'sl', 'qty']]
-        st.dataframe(df_display, use_container_width=True)
-        
-        # --- Top 3 Priority Cards Section with On-Demand AI Button ---
         st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
         
         top_3 = sorted_trades[:3]
         priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
         
         for idx, trade in enumerate(top_3):
+            # --- केवल कैपिटल (₹10k, ₹20k, ₹50k) के आधार पर शेयरों की संख्या (Quantity) का कैलकुलेशन ---
+            per_share_risk = abs(trade['price'] - trade['sl'])
+            # इंट्राडे में 5x मार्जिन मानकर कैपिटल के हिसाब से मैक्सिमम शेयर्स
+            max_qty_by_capital = int((capital * 5) // trade['price'])
+            final_qty = max(1, max_qty_by_capital)
+
+            total_trade_risk = round(per_share_risk * final_qty, 2)
+            per_share_reward = abs(trade['target'] - trade['price'])
+            total_potential_profit = round(per_share_reward * final_qty, 2)
+
             st.markdown(f"### {priority_titles[idx]}: {trade.get('sym')}")
             with st.container(border=True):
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric(label=f"स्टॉक सिंबल: {trade.get('sym')}", value=f"₹{trade.get('current_price')}", delta=f"{trade.get('change')}%")
                     st.markdown(f"**⚡ लाइव एक्शन:** `{trade.get('signal')}`")
-                    st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{trade.get('qty')} शेयर्स`")
+                    st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (कैपिटल के आधार पर)")
+                    st.markdown(f"📉 **अनुमानित रिस्क:** ₹{total_trade_risk} | 🎯 **संभावित प्रॉफिट (1:2):** ₹{total_potential_profit}")
                 
                 with col2:
                     st.markdown("### 🎯 लाइव ऑर्डर्स की जानकारी (1:2 रिस्क-रिवॉर्ड):")

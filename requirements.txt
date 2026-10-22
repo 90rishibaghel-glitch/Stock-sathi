@@ -6,4 +6,3 @@ google-genai
 nsepythonserver
 holidays
 pytz
-pywhatkit

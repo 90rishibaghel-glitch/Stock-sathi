@@ -10,15 +10,19 @@ from nsepythonserver import nse_quote_ltp, nse_quote
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+import pywhatkit as kit  # WhatsApp संदेश भेजने के लिए
 
 # 1. Page Configuration
 st.set_page_config(page_title="AI Live Nifty50 Scalper v5.1 Pro", page_icon="⚡", layout="wide")
 
-st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - Pure Cash / No Margin)")
-st.caption("100% लाइव डेटा इंजन (No yfinance Lag) | एनएसई डायरेक्ट फीड | केवल शुद्ध कैपिटल (No Margin) आधारित क्वांटिटी + ऑन-डिमांड AI")
+st.title("⚡ AI Nifty 50 Real-Time Scalper & Scanner (v5.1 Pro - WhatsApp Alert)")
+st.caption("100% लाइव डेटा इंजन | एनएसई डायरेक्ट फीड | WhatsApp टारगेट/SL अलर्ट + ऑन-डिमांड AI")
 
 # --- Gemini AI Key from Streamlit Secrets ---
 gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+# --- Target WhatsApp Number ---
+WHATSAPP_NUMBER = "+919039207608"
 
 # --- Time & Market Status Management ---
 IST = pytz.timezone('Asia/Kolkata')
@@ -129,7 +133,7 @@ def get_ai_intraday_verdict(ticker_sym, signal_type, price, target, sl, open_p, 
     except Exception as e:
         err_str = str(e)
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            return "⚠️ **Google AI Quota Limit Exceeded (429):** आपके फ्री टियर की दैनिक सीमा समाप्त हो गई है। कृपया कल कोशिश करें या पेड प्लान देखें।"
+            return "⚠️ **Google AI Quota Limit Exceeded (429):** आपके फ्री टियर की दैनिक सीमा समाप्त हो गई है।"
         return f"एआई सर्वर कनेक्ट नहीं हो पाया: {err_str}"
 
 # --- Frontend Rendering ---
@@ -140,9 +144,11 @@ if market_status == "CLOSED":
 elif market_status == "SLUMP":
     st.warning("⚠️ **अलर्ट:** अभी मिड-डे टाइम चल रहा है। वॉल्यूम कम हो सकता है।")
 
-# Session State initialize करना ताकि स्टॉक बार-बार न बदलें
+# Session State initialize करना
 if 'top_3_locked' not in st.session_state:
     st.session_state.top_3_locked = None
+if 'alert_sent_status' not in st.session_state:
+    st.session_state.alert_sent_status = {}
 
 if st.button("🔄 Nifty 50 लाइव स्कैन शुरू करें (नया स्कैन)"):
     all_intraday_trades = []
@@ -196,10 +202,23 @@ if st.button("🔄 Nifty 50 लाइव स्कैन शुरू करे�
 
         sorted_trades = sorted(all_intraday_trades, key=lambda x: x['score'], reverse=True)
         st.session_state.top_3_locked = sorted_trades[:3]
+        st.session_state.alert_sent_status = {}  # Reset alert status for new scan
 
-# --- Display Top 3 Locked Stocks (Pure Capital Calculation) ---
+        # --- WhatsApp पर स्कैन रिजल्ट भेजने का कोड ---
+        try:
+            msg = "🚨 *Nifty 50 Top 3 Scalper Signals (v5.1)* 🚨\n\n"
+            for i, t in enumerate(st.session_state.top_3_locked):
+                msg += f"*{i+1}. {t['sym']}* | {t['signal']}\n"
+                msg += f"Entry: ₹{t['price']} | Target: ₹{t['target']} | SL: ₹{t['sl']}\n\n"
+            
+            kit.sendwhatmsg_instantly(WHATSAPP_NUMBER, msg, wait_time=10, tab_close=True)
+            st.toast("✅ WhatsApp पर टॉप सिग्नल्स सफलतापूर्वक भेज दिए गए हैं!", icon="💬")
+        except Exception as e:
+            st.warning(f"⚠️ WhatsApp ऑटो-सेंड में त्रुटि (इंस्टॉल/वेब कनेक्शन चेक करें): {e}")
+
+# --- Display Top 3 Locked Stocks & Target/SL Live Monitor ---
 if st.session_state.top_3_locked:
-    st.success(f"🔥 टॉप 3 प्रायोरिटी स्टॉक लॉक हैं। (शुद्ध पूँजी आधारित कैलकुलेशन)")
+    st.success(f"🔥 टॉप 3 प्रायोरिटी स्टॉक लॉक हैं और WhatsApp अलर्ट एक्टिव है ({WHATSAPP_NUMBER})।")
     
     st.markdown("## 🏆 Top 3 High-Accuracy Priority Picks + On-Demand AI Mentor")
     
@@ -207,10 +226,7 @@ if st.session_state.top_3_locked:
     priority_titles = ["🥇 Priority #1 Pick", "🥈 Priority #2 Pick", "🥉 Priority #3 Pick"]
     
     for idx, trade in enumerate(top_3):
-        # --- शुद्ध कैपिटल आधारित क्वांटिटी कैलकुलेशन (बिना किसी मार्जिन के) ---
         per_share_risk = abs(trade['price'] - trade['sl'])
-        
-        # केवल मूल कैपिटल से खरीदे जा सकने वाले शेयर्स (Capital // Entry Price)
         qty_by_pure_capital = int(capital // trade['price'])
         final_qty = max(1, qty_by_pure_capital)
 
@@ -218,13 +234,43 @@ if st.session_state.top_3_locked:
         per_share_reward = abs(trade['target'] - trade['price'])
         total_potential_profit = round(per_share_reward * final_qty, 2)
 
+        # --- Target / SL Hit Check (Live Tracker) ---
+        current_ltp = trade['current_price']
+        is_buy = "BUY" in trade['signal']
+        
+        # चेक करें कि क्या टारगेट या एसएल हिट हो गया है
+        alert_key = trade['sym']
+        if alert_key not in st.session_state.alert_sent_status:
+            st.session_state.alert_sent_status[alert_key] = False
+
+        if not st.session_state.alert_sent_status[alert_key]:
+            hit_msg = ""
+            if is_buy:
+                if current_ltp >= trade['target']:
+                    hit_msg = f"🎯 *TARGET HIT ALERT!* Stock: *{trade['sym']}* reached Target Price ₹{trade['target']}!"
+                elif current_ltp <= trade['sl']:
+                    hit_msg = f"🛑 *STOP LOSS HIT ALERT!* Stock: *{trade['sym']}* hit Stop Loss ₹{trade['sl']}!"
+            else: # SELL
+                if current_ltp <= trade['target']:
+                    hit_msg = f"🎯 *TARGET HIT ALERT!* Stock: *{trade['sym']}* reached Target Price ₹{trade['target']}!"
+                elif current_ltp >= trade['sl']:
+                    hit_msg = f"🛑 *STOP LOSS HIT ALERT!* Stock: *{trade['sym']}* hit Stop Loss ₹{trade['sl']}!"
+
+            if hit_msg:
+                try:
+                    kit.sendwhatmsg_instantly(WHATSAPP_NUMBER, hit_msg, wait_time=10, tab_close=True)
+                    st.session_state.alert_sent_status[alert_key] = True
+                    st.toast(f"🚨 {trade['sym']} का टारगेट/SL हिट हुआ, WhatsApp पर अलर्ट भेज दिया गया!", icon="🚨")
+                except Exception as e:
+                    pass
+
         st.markdown(f"### {priority_titles[idx]}: {trade.get('sym')}")
         with st.container(border=True):
             col1, col2 = st.columns(2)
             with col1:
                 st.metric(label=f"स्टॉक सिंबल: {trade.get('sym')}", value=f"₹{trade.get('current_price')}", delta=f"{trade.get('change')}%")
                 st.markdown(f"**⚡ लाइव एक्शन:** `{trade.get('signal')}`")
-                st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (शुद्ध कैपिटल आधारित - No Margin)")
+                st.markdown(f"**📦 अनुशंसित मात्रा (Quantity):** `{final_qty} शेयर्स` (शुद्ध कैपिटल आधारित)")
                 st.markdown(f"📉 **अनुमानित रिस्क:** ₹{total_trade_risk} | 🎯 **संभावित प्रॉफिट (1:2):** ₹{total_potential_profit}")
             
             with col2:
@@ -253,4 +299,4 @@ if st.session_state.top_3_locked:
                     )
                 st.info(f"💡 **AI लाइव ट्रेड मेंटॉर ({trade.get('sym')}):**\n\n{ai_verdict}")
 else:
-    st.info("ℹ️ कृपया ऊपर दिए गए **'🔄 Nifty 50 लाइव स्कैन शुरू करें'** बटन पर क्लिक करें ताकि टॉप 3 स्टॉक लोड हो सकें।")
+    st.info("ℹ️ कृपया ऊपर दिए गए **'🔄 Nifty 50 लाइव स्कैन शुरू करें'** बटन पर क्लिक करें ताकि टॉप 3 स्टॉक लोड हो सकें और WhatsApp अलर्ट एक्टिव हो सके।")
